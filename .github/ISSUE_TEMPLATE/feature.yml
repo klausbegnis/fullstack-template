@@ -1,0 +1,99 @@
+name: Feature
+description: Propose a new capability that does not exist yet
+title: "[Feature] "
+labels: [feature, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe a capability the app does not have today. Write enough detail that
+        an unattended agent could implement it from this issue alone, without asking
+        a follow-up question.
+  - type: textarea
+    id: what-is-it
+    attributes:
+      label: What is it
+      description: One or two sentences on the capability and who needs it.
+      placeholder: >-
+        Allow an admin to deactivate a user account without deleting it, so the user
+        loses access immediately but their history is preserved.
+    validations:
+      required: true
+  - type: textarea
+    id: specs
+    attributes:
+      label: Specs
+      description: >-
+        The concrete behaviour: endpoints, schemas, UI states, validation rules.
+        Specific enough to implement from this alone.
+      placeholder: |
+        - New endpoint `POST /api/users/{id}/deactivate`, admin-only (`RequireAdmin`).
+        - Sets `User.is_active = False`; a login attempt for a deactivated user
+          returns 401 with `APIException` code `user_inactive`.
+        - Frontend: a "Deactivate" action in
+          a new container under `features/users/containers/`, confirmation dialog,
+          optimistic `useMutation`.
+    validations:
+      required: true
+  - type: textarea
+    id: pre-exploration
+    attributes:
+      label: Pre-exploration
+      description: >-
+        The head start an implementing agent gets: known files, prior art,
+        constraints already discovered, and open questions. Filled in during
+        grooming so the agent does not have to rediscover it.
+      placeholder: |
+        - Prior art: `app/services/users.py::update_user` already toggles a
+          boolean field inside a `transaction()` block.
+        - `app/core/exceptions.py` has no `UserInactiveError` yet -- add one there.
+        - Open question: should a deactivated user's active sessions be revoked
+          immediately, or expire naturally?
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: A testable checklist. Each line should be verifiable by a specific test or manual step.
+      placeholder: |
+        - [ ] `uv run pytest tests/unit/services/test_users.py` covers
+              deactivate and reactivate.
+        - [ ] A deactivated user cannot obtain a new access token from
+              `POST /api/auth/login`.
+        - [ ] `npm run test` covers the confirmation dialog and the optimistic
+              update rollback on failure.
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What this issue explicitly does not cover, so an agent does not scope-creep into it.
+      placeholder: >-
+        Bulk deactivation, scheduled deactivation, and notifying the user by email
+        are separate issues.
+    validations:
+      required: false
+  - type: input
+    id: related-documents
+    attributes:
+      label: Related documents
+      description: Repo-relative path to the PRD or spec this issue implements, if any.
+      placeholder: docs/prds/0001-user-management.md
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the stack this change touches. Pick every area it spans.
+      multiple: true
+      options:
+        - backend
+        - frontend
+        - full-stack
+        - devops
+        - security
+    validations:
+      required: true

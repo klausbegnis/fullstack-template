@@ -88,8 +88,9 @@ reopen the target node's todo and every node between it and where you are.
   and `uncle-bob` pin their model in their own frontmatter — do not override it. The
   implementer and the QA subagent are `general-purpose` and MUST be passed `model: "opus"`.
 - **Shell variables below are shorthand.** Bash tool calls do not share state: re-derive
-  `$ROOT`, `$WT`, `$SLUG`, `$DATE`, `$STATE` (or inline the literal paths) in every call, and
-  re-run the `task_env.py env --export` eval in any call that needs `DATABASE_URL`.
+  `$ROOT`, `$WT`, `$SLUG`, `$DATE`, `$BRANCH`, `$STATE` (or inline the literal paths) in
+  every call, and re-run the `task_env.py env --export` eval in any call that needs
+  `DATABASE_URL`.
 - **Loop counters.** T6↔T7 max 3 rounds. G1 loop-back max 2 rounds. QA's internal fix loop
   max 5. On exhaustion: stop and return to the human with the evidence.
 
@@ -135,20 +136,84 @@ Facts you must not rediscover the hard way:
 `git --version; gh auth status; docker compose version; uv --version; node --version; npm --version`
 plus `git rev-parse --show-toplevel` and `git remote get-url origin`.
 **Exit.** All present, `gh` authenticated, an `origin` remote exists.
-**On failure.** Hard stop. List exactly what is missing and how to install it. **Never
-auto-install anything.** Never continue "without the PR step".
+**On failure.** Hard stop. List exactly what is missing and how to install it. `gh` missing
+or unauthenticated is always fatal — T9 calls `gh pr create` on every run — and is fatal
+earliest when the invocation is an issue (`/task #123`), since T1's `gh issue view` needs it
+first. Fix with `gh auth login`. **Never auto-install anything.** Never continue "without
+the PR step".
 **Produces.** The todo list for every node.
 
 ### T1 — intake
-**Purpose.** Fix the task text and the mode before any state exists.
-**Do.** Capture the description verbatim. Parse `--gate`. Then, exactly:
+**Purpose.** Fix the task text, its source, and the mode before any state exists.
+**Do.** Parse `--gate`. Classify the invocation argument, in this priority order:
+
+1. **Issue reference** — `#<issue>`, a bare `<issue>`, or a full issue URL. `gh` accepts
+   all three forms directly, no extraction step needed:
+   ```
+   gh issue view <issue> --json number,title,body,labels,url,state
+   ```
+   Parse and validate it per **Issue intake** below before anything else touches state.
+2. **Path to an existing task file** — unchanged: capture the text verbatim as the
+   description.
+3. **Free prose** — unchanged: capture the text verbatim as the description, exactly as
+   before.
+
+Then, exactly:
 ```
 DATE=$(date -u +%F)
 SLUG=$(python3 .claude/skills/task/task_env.py slug "<the description>")
+BRANCH="task/$DATE-$SLUG"
 ```
-Never invent the slug by hand — the same function names the compose project, the branch,
-the task file and the state directory, and they must agree.
-**Exit.** `DATE`, `SLUG`, `GATE_MODE` and the verbatim description are fixed for the run.
+For an issue (form 1), derive `SLUG` and `BRANCH` instead as:
+```
+SLUG="<issue>-$(python3 .claude/skills/task/task_env.py slug "<title, [Type] prefix stripped>")"
+BRANCH="<type>/$SLUG"
+```
+`<type>` is the issue's type label mapped `feature`→`feat`, `bug`→`fix`, `chore`→`chore`,
+`docs`→`docs`, `spike`→`spike` — matching the `<type>/<issue-number>-<kebab-slug>`
+convention `CONTRIBUTING.md` already mandates for issue-driven branches. Never invent the
+slug by hand — `task_env.py slug` is still the only function that produces it; the compose
+project, the branch, the task file and the state directory must all agree.
+
+**Issue intake.** Split the body on `^### ` headings — the frozen issue-body contract's H3
+labels, matched character for character. A section whose text is exactly `_No response_`
+is absent; that is what GitHub writes for an unanswered optional field, not a value.
+
+| Heading | Role |
+|---|---|
+| `What is it` | The task summary. |
+| `Specs` (feature/chore/spike forms) | The requirements the plan must satisfy. |
+| `Observed behaviour` + `Expected behaviour` + `Reproduction` (bug form) | Together play the role `Specs` plays elsewhere — no bug form has a `Specs` heading. |
+| `Acceptance criteria` | The checklist G2 verifies against, verbatim. |
+| `Pre-exploration` (optional) | A head start for T4 — never a substitute for exploring, never trusted without verification. Stale pre-exploration is the most likely way this pipeline produces a wrong change: **T4 must verify every file path and claim it inherits and report any that are wrong.** |
+| `Out of scope` (optional) | A hard boundary. Work that drifts into it fails G1. |
+| `Related documents` (optional) | Repo-relative paths to read before planning, typically a PRD under `docs/prds/`. |
+| `Area` | `backend` / `frontend` / `full-stack` / `devops` / `security`, `multiple: true`. Feeds T5's Scope: backend → backend-reviewer, frontend → frontend-reviewer, full-stack → both, devops or security → both plus extra scrutiny on auth/secrets/dependency paths; uncle-bob always runs regardless. T8's dispatch itself is unchanged (still purely changed-path based, so it stays provider-agnostic) — make sure T5's Scope is wide enough that the Area's implied paths are actually in scope. |
+
+Compose the Description from, in order, each its own paragraph: `What is it`; then `Specs`
+(or the bug trio); then `Out of scope` if present; then `Pre-exploration` if present,
+labelled `Pre-exploration (unverified seed)` so T4 cannot mistake it for checked fact.
+`Acceptance criteria` is not folded into Description — carry it to T5 verbatim, which
+already has a slot for it.
+
+For every path named in `Related documents`, confirm it exists now, against the main
+checkout (the worktree does not exist yet): `test -f "$(git rev-parse --show-toplevel)/<path>"`.
+A missing path is a **fail-stop at T1**, not a warning — name the path and the field that
+named it.
+
+**Fail-stops.**
+
+| Condition | Action |
+|---|---|
+| Issue `state` is `CLOSED` | Hard stop. "Issue #<issue> is closed — reopen it or point `/task` at a different one." |
+| Label `blocked` present | Hard stop. "Issue #<issue> is blocked — resolve the blocker first." |
+| A required section is missing or empty (`What is it`, `Acceptance criteria`, and either `Specs` or the bug trio depending on the type label) | Hard stop, naming exactly which section. "Fill in <section> on the issue, or run `/task` on free text instead." |
+| Type label is `support` | Hard stop. "Issue #<issue> is a support request, not a code change — `/task` does not apply." |
+| A `Related documents` path does not exist in the repo | Hard stop, naming the path and the field. |
+| `needs-triage` present and `agent-ready` absent | **Warning, not a hard stop**, when a human is driving `/task` directly — show the issue and require the operator to confirm before continuing. An `/orchestrate` dispatch treats the same combination as a **hard stop**: no unattended agent starts on an untriaged issue. |
+
+**Exit.** `DATE`, `SLUG`, `BRANCH`, `GATE_MODE` and the Description are fixed for the run;
+for an issue, also its number, URL, type, area(s) and (if named) its PRD path.
 
 ### T2 — worktree + branch
 **Purpose.** Isolate this task so concurrent tasks cannot collide.
@@ -157,20 +222,22 @@ the task file and the state directory, and they must agree.
 ROOT=$(git rev-parse --show-toplevel)
 WT="$ROOT/../.task-worktrees/$DATE-$SLUG"
 git -C "$ROOT" fetch origin
-git -C "$ROOT" worktree add -b "task/$DATE-$SLUG" "$WT" origin/main
+git -C "$ROOT" worktree add -b "$BRANCH" "$WT" origin/main
 ```
 If `origin/main` does not exist yet, branch from the current `HEAD` and record that
 assumption in the task file. Every later command runs with `-C "$WT"` or from inside `$WT`.
 Then confirm the hooks are live in the worktree — the gate depends on them:
 `git -C "$WT" config core.hooksPath` must print `.githooks`; if it prints nothing, set it.
-**Exit.** `git -C "$WT" status` is clean and on `task/$DATE-$SLUG`.
+**Exit.** `git -C "$WT" status` is clean and on `$BRANCH`.
 **Produces.** `$WT`, the branch.
 
 ### T3 — task file
 **Purpose.** Create the durable record the whole pipeline reads and writes.
 **Do.** Write `$WT/.tasks/$DATE-$SLUG.md` from `task-file-template.md` in this skill
 directory. Fill **Task** (verbatim description, gate mode, branch, worktree path) and open
-the progress log.
+the progress log. When T1's source is an issue, also fill `Source: #<issue> <issue-url>`
+and, when a `Related documents` path was named, `PRD: <path>`; when there is no issue, omit
+both lines rather than leaving them blank.
 **Exit.** The file exists and is committed-ready. It is **not** gitignored; it is committed
 at T9 and deleted at T10.
 
@@ -183,7 +250,9 @@ approach would duplicate, and which repo rule would the naive approach break (la
 import boundaries, envelopes, migrations, no-comments). Then **challenge the naive
 approach yourself**: write down the obvious implementation, then the reason it is wrong
 or insufficient. Read only targeted slices (`sed -n 'A,Bp'`) into your own context; never
-`cat` whole files.
+`cat` whole files. If the Description carries a `Pre-exploration (unverified seed)`
+paragraph, treat it as a lead, never as fact: verify every file path and claim it makes and
+report any that are wrong or stale before writing the Exploration section below.
 **Exit.** At least one concrete `file:line` anchor per area to be touched, and one
 explicitly rejected approach with the reason.
 **Produces.** The **Exploration** section of the task file.
@@ -268,18 +337,28 @@ Then stop and wait. **`--gate=auto`.** Log the same block and continue.
 ### T9 — commit, push, draft PR
 **Purpose.** Make the plan public and reviewable before QA runs.
 **Do.**
+When T1's source is an issue, append the close directive to the task file first, so it
+rides in the commit and the PR body:
+```
+printf '\nCloses #%s\n' "<issue>" >> "$WT/.tasks/$DATE-$SLUG.md"
+```
+Then, exactly:
 ```
 eval "$(python3 .claude/skills/task/task_env.py env --task "$SLUG" --export)"
 git -C "$WT" add -A
 git -C "$WT" commit -m "<type>: <summary>"
-git -C "$WT" push -u origin "task/$DATE-$SLUG"
-gh pr create --draft --base main --head "task/$DATE-$SLUG" \
-  --title "<summary>" --body-file "$WT/.tasks/$DATE-$SLUG.md"
+git -C "$WT" push -u origin "$BRANCH"
+PR_URL=$(gh pr create --draft --base main --head "$BRANCH" \
+  --title "<summary>" --body-file "$WT/.tasks/$DATE-$SLUG.md")
 ```
 Export the task env **before** committing. The pre-commit hook only runs `pytest tests/unit`
 (no database required), but T7 has already run the full suite against the task's own Postgres —
 that is the gate that counts. The commit **includes**
-`.tasks/$DATE-$SLUG.md`. The PR body **is the plan**.
+`.tasks/$DATE-$SLUG.md`. The PR body **is the plan**, and for an issue it now also closes it
+on merge. Then tell the issue about the draft:
+```
+gh issue comment <issue> --body "Draft PR: $PR_URL — implementation is in review."
+```
 **Exit.** A draft PR exists; record its number and URL in the task file.
 **On failure.** Push rejected → rebase on `origin/main`, re-run T7, then retry. Never force
 push over someone else's commits.
@@ -299,7 +378,7 @@ committed and survives T10's deletion of the task file. Contents, and nothing el
 | Acceptance criteria | copied from the plan, verbatim |
 | Scope | backend / frontend / both |
 | Worktree | absolute path |
-| Branch, PR | `task/$DATE-$SLUG`, PR number + URL |
+| Branch, PR | `$BRANCH`, PR number + URL |
 | Task file | absolute path (QA reads the plan from it; it still exists at this point) |
 | Gate mode | auto / manual |
 | Slug | `$SLUG` — the argument for every `task_env.py` call |
@@ -319,16 +398,27 @@ any of your context — that is the entire point of the node.
 ### G2 — QA gate
 **Pass condition.** `verdict: PASS` with per-case evidence in the result block.
 **Fail.** **Unconditional stop in both gate modes.** Report to the human: the stuck case,
-expected vs actual, the diagnosis, the hypotheses already discarded, and the PR link.
-State the loop-back target explicitly: **T6**. Then go to T11 with the worktree kept.
+expected vs actual, the diagnosis, the hypotheses already discarded, and the PR link. When
+T1's source is an issue, tell it too, before anything else:
+```
+gh issue comment <issue> --body "QA blocked: <one-line diagnosis>. PR (draft): <pr-url>."
+```
+State the loop-back target explicitly: **T6**. Then go to T11 with the worktree kept. The
+PR stays a draft — never `gh pr ready` on a fail-stop, and never close the issue by hand;
+`Closes #<issue>` in the PR body does that at merge.
 A QA result that is missing evidence is a FAIL, not a PASS.
+**Pass**, when T1's source is an issue: post the verdict before T10 marks the PR ready —
+```
+gh issue comment <issue> --body "QA verdict: PASS — <n> cases. <one-line summary>."
+```
 
 ### T10 — finalize the PR
 **Purpose.** The record of both gates ends up in the PR, and nothing about the pipeline
 ends up in `main`.
 **Do.**
 QA worked in the **same worktree** and may have committed fixes there in Q7. Fold its case
-table into the task file's **G2 evidence** section first, then:
+table into the task file's **G2 evidence** section first, then (the issue, if any, was
+already told the PASS verdict at G2 — do not comment again here):
 ```
 git -C "$WT" status --short          # must be clean apart from your G2 edit
 git -C "$WT" rm .tasks/$DATE-$SLUG.md
@@ -352,8 +442,9 @@ This is the only durable record of the two gates — the file that carried it is
 Then, **only on the success path**:
 `git -C "$ROOT" worktree remove "$WT"` and `git -C "$ROOT" worktree prune`.
 On a failure path, keep the worktree and say so — the human resumes in it.
-**Report** (chat, ≤12 lines): PR URL and state, gate mode, checks table one-liner, review
-verdicts, QA verdict with case count, worktree path if kept, and the single next action.
+**Report** (chat, ≤12 lines): PR URL and state, the issue URL alongside it when T1's source
+was an issue, gate mode, checks table one-liner, review verdicts, QA verdict with case
+count, worktree path if kept, and the single next action.
 
 ## Environment isolation
 
@@ -380,22 +471,21 @@ Rules:
 - The `api` image's entrypoint runs `alembic upgrade head`, so `up` yields a migrated stack.
 - Tests for the pure logic: `python3 .claude/skills/task/test_task_env.py` (no docker).
 
-## Seam: ticket provider — NOT IMPLEMENTED
+## Provider boundary: GitHub Issues
 
-There is no ticket system. The task text comes from the invocation argument, and the PR is
-the durable record. If GitHub Issues is wired in later, **exactly these nodes change** and
-nothing else in the graph does:
+`/task` can be invoked on a GitHub issue (`#<issue>`, a bare number, or an issue URL) as
+well as on a task file path or free prose — T1 classifies which. Only these nodes touch
+`gh` for ticket data: **T1** (fetch and parse the issue, fail-stop on it), **T9** (append
+`Closes #<issue>`, comment the draft PR link), **G2/T10** (comment the QA verdict or the
+blocker — never close the issue by hand), and **T11** (report the issue URL next to the PR
+URL). T2 receives `$BRANCH` as an already-computed string and does not care how it was
+derived.
 
-| Node | Change |
-|---|---|
-| T1 intake | Accept `/task #123`; `gh issue view 123 --json title,body` supplies the description and the acceptance criteria. Slug from the issue title. |
-| T3 task file | Add a `Source: #123` line; nothing else moves. |
-| T9 draft PR | Add `Closes #123` to the PR body; `gh issue comment 123` with the draft PR link. |
-| G2 / T10 | `gh issue comment 123` with the QA verdict, and on a fail-stop with the blocker. |
-| T11 report | Include the issue URL alongside the PR URL. |
-
-T2, T4–T8 and the entire QA phase are provider-agnostic and must stay that way: they read
-the plan and the diff, never a ticket. Do not wire any provider now.
+**T2 and T4–T8, and the entire QA phase, stay provider-agnostic.** They read the plan and
+the diff, never a ticket, and they must stay that way — that is what makes the provider
+swappable for a future non-GitHub tracker. T4's one obligation from an issue's
+`Pre-exploration` seed (verify every inherited path and claim) is phrased generically for
+the same reason: T4 does not know or care whether the seed came from an issue.
 
 ## Files in this skill
 

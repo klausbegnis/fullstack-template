@@ -73,10 +73,12 @@ npm run dev
 | Typecheck | `uv run mypy app` | `npm run typecheck` |
 | Build/verify | `uv run alembic check` | `npm run build` |
 
-All of the above were run against this repository while writing these docs and passed: 79 backend
-tests, 50 frontend tests, clean ruff/mypy/eslint/tsc/prettier, and a clean `next build`.
-`.githooks/pre-commit` (enable with `git config core.hooksPath .githooks`) runs a fast subset of
-these on staged files before every commit.
+All of the above were run against this repository and passed: **204 backend tests** (with
+`DATABASE_URL` set — without it, 24 integration tests skip silently and the suite still exits 0,
+see [`CONTRIBUTING.md`](./CONTRIBUTING.md)), **50 frontend tests**, clean
+ruff/mypy/eslint/tsc/prettier, and a clean `next build`. `.githooks/pre-commit` (enable with
+`git config core.hooksPath .githooks`) runs a fast, change-scoped subset of these on staged files
+before every commit.
 
 ## Architecture
 
@@ -104,11 +106,26 @@ This template ships a small pipeline for agent-driven development, under `.claud
 
 | | |
 |---|---|
-| `/task <description>` | Takes one piece of work from nothing to a ready-for-review PR in its own git worktree, through two hard gates: plan/implement/review, then executable QA against a real running stack. |
-| `/orchestrate <items>` | Fans a backlog of independent tasks out over concurrent `/task` runs with a bounded worker pool and per-task isolation. |
+| `/groom <idea>` | Turns a product idea into a reviewed PRD under `docs/prds/` and the GitHub issues that implement it. The only skill that creates issues, and it will not create any without showing you the exact commands first. |
+| `/task #123` | Takes one issue from nothing to a ready-for-review PR in its own git worktree, through two hard gates: plan/implement/review, then executable QA against a real running stack. |
+| `/orchestrate --label backend` | Fans an eligible backlog out over concurrent `/task` runs with a bounded worker pool, dependency ordering, and per-task isolation. |
 | `backend-reviewer` agent | Reviews a backend diff against the layering, migration, DI, auth, and error-contract rules, running the real checks as evidence. |
 | `frontend-reviewer` agent | Reviews a frontend diff against import boundaries, server/client rules, auth, and forms, running the real checks as evidence. |
 | `uncle-bob` agent | Clean-code/design review — naming, function size, duplication, and the no-comments rule — across both stacks. |
 
-See `AGENTS.md` for the full index, exact commands, and mechanical recipes for extending either
-stack.
+The loop is `idea -> PRD -> issues -> PRs`. A PRD in `docs/prds/` holds the reasoning and is
+reviewed as a diff like any other file; a GitHub issue holds one mergeable unit of work and closes
+with its PR. The issue forms in `.github/ISSUE_TEMPLATE/` are not decoration — `/task` parses
+their sections, and a test fails if a form and the parser ever disagree.
+
+Start here:
+
+```bash
+git config core.hooksPath .githooks
+scripts/sync-labels.sh
+```
+
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the contribution standards that apply to humans and
+agents alike, [`docs/prds/README.md`](./docs/prds/README.md) for why PRDs are files and not
+issues, and [`AGENTS.md`](./AGENTS.md) for the full index, exact commands, and mechanical recipes
+for extending either stack.

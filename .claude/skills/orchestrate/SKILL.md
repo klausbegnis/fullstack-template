@@ -1,6 +1,6 @@
 ---
 name: orchestrate
-description: Drive a batch of independent work items through the existing /task pipeline concurrently, with a bounded worker pool, per-task worktree/branch/compose isolation, pre-dispatch overlap detection (migration-touching tasks always serialized to a single alembic head), disk-persisted resumable run state, orphan reclamation, and a final PR/gate summary table. Invoked as `/orchestrate <items>` (newline- or `-`-delimited) or `/orchestrate --backlog=<path> [--concurrency=N] [--gate=manual|auto] [--run=<id>] [--strict-overlap]`. Use for a batch/backlog of independent tasks to ship in parallel, "run these N tasks concurrently", "process the backlog", "fan /task out over this list", or when an external loop (cron, Hermes, a queue consumer) re-invokes to advance a run. Do NOT use for one piece of work — call /task directly — and do not use it to review existing code, merge PRs, or answer a question.
+description: Drive a batch of independent work items through the existing /task pipeline concurrently, with a bounded worker pool, per-task worktree/branch/compose isolation, pre-dispatch overlap and dependency-graph detection (migration-touching tasks always serialized to a single alembic head; dependent issues wait on the prior PR reaching MERGED), disk-persisted resumable run state, orphan reclamation, issue-tracker status write-back, and a final PR/gate summary table. Invoked as `/orchestrate <items>` (newline- or `-`-delimited), `/orchestrate --backlog=<path>`, `/orchestrate --label <name> [--label <name>...]`, `/orchestrate --milestone <name>`, or `/orchestrate #12 #14 #19`, any of which take `[--concurrency=N] [--gate=manual|auto] [--run=<id>] [--strict-overlap]`. Use for a batch/backlog of independent tasks to ship in parallel, "run these N tasks concurrently", "process the backlog", "work the agent-ready issues", "fan /task out over this list", or when an external loop (cron, Hermes, a queue consumer) re-invokes to advance a run. Do NOT use for one piece of work — call /task directly — and do not use it to review existing code, merge PRs, or answer a question.
 ---
 
 # orchestrate — bounded concurrent /task fan-out
@@ -18,6 +18,8 @@ status record per task — never that task's diff, plan, or transcript.
 |---|---|---|
 | `<items>` | The backlog. See **Input forms** below. | required |
 | `--backlog=<path>` | Read items from a file instead of inline args. | — |
+| `--label <name>` | Repeatable. Source the backlog from open issues carrying every named label (AND). | — |
+| `--milestone <name>` | Source the backlog from open issues in the named milestone. | — |
 | `--concurrency=N` | Max tasks in flight at once. | **3** |
 | `--gate=manual\|auto` | Forwarded verbatim to every `/task` dispatch unless a line overrides it. | `auto` |
 | `--run=<id>` | Pin the run id for resume. Omit to derive one deterministically. | derived |
@@ -29,9 +31,19 @@ status record per task — never that task's diff, plan, or transcript.
 3. `--backlog=<path>` — a plain-text or markdown-checklist file, one task per line. Blank
    lines and lines starting with `#` are ignored. A `- [x]` checked line is skipped (treated
    as already handled outside this run); `- [ ]` and unmarked lines are work items.
+4. The issue tracker. `--label <name>` (repeatable, AND semantics) and/or
+   `--milestone <name>` pull the queue from
+   `gh issue list --state open --label <l> --json number,title,labels,url` (one `--label`
+   per name) or `gh issue list --state open --milestone "<name>" --json number,title,labels,url`;
+   an explicit `#12 #14 #19` argument list pulls exactly those issues via
+   `gh issue view <n> --json number,title,body,labels,state,url`. Either way, every issue
+   found is run through the **eligibility filter** (below) before it becomes a task: each
+   surviving issue's task description is the literal string `/task #<n>` — `/task` itself
+   parses the frozen issue body headings — and its row carries `issue_number: <n>`.
 
 Each line may end with its own `--gate=` override, which wins over the run default for that
-task only.
+task only. Issue-sourced tasks have no line to annotate this way and always use the run's
+`--gate`.
 
 ## Concurrency default: 3, and why
 
@@ -43,6 +55,64 @@ one, are. Three is the largest pool that keeps every in-flight PR reviewable by 
 `--gate=manual` without a backlog of unread gate reports, and matches `/task`'s own
 conservatism about round counts. Raise `--concurrency` on a beefier box; lower it to 1 to
 force strict sequential processing without changing anything else about this skill.
+
+## Issue eligibility and dependency graph
+
+This is reference material for **O1** (fetch + filter), **O2** (graph construction), **O3**
+(lane admission) and **O5/O6** (write-back) below — it adds no nodes of its own.
+
+**Eligibility filter.** An open issue is a dispatch candidate only if every clause holds,
+checked in order, and the first failing clause is recorded as the rejection reason:
+0. **Is actually an issue.** For an explicit `#<n>` argument, `gh issue view <n> --json
+   number,state,title,url` exits 0 for a pull request number too — GitHub models PRs as
+   issues, so this check exists precisely because `gh issue view` cannot be trusted to
+   reject one on its own. Reject unless the returned `.url` contains `/issues/`; a `.url`
+   containing `/pull/` is rejected as `not-an-issue:#<n>`, regardless of `.state` (a merged
+   PR reports `MERGED`, but an open PR reports `OPEN` exactly like an eligible issue would,
+   so `state` alone is not the check). `--label`/`--milestone` sourcing never needs this
+   clause — `gh issue list` cannot return a PR.
+1. `state: OPEN` — `gh issue list --state open` already restricts to this; an explicit
+   `#<n>` argument is still checked with `gh issue view <n> --json state`.
+2. Carries the flow label `agent-ready`.
+3. Does not carry `blocked` or `needs-triage`.
+4. Every `Depends on #<n>` parsed from the body (see **Dependency graph** below) is
+   resolved.
+5. No open PR already references it: `gh pr list --search "<n> in:body" --state open --json
+   number,url` returns empty.
+A rejected issue is never dropped silently. It is recorded in O1 with its clause
+(`not-an-issue:#<n>`, `not-agent-ready`, `blocked-label`, `needs-triage`,
+`unmet-dependency:#<n>`, or `open-pr:#<pr>`) and surfaced again in O7's final report.
+
+**Dependency graph.** For every candidate issue, grep its body for `Depends on #<n>`
+(one or more, case-insensitive). Each match is an edge `issue -> dependency`. A dependency
+is **resolved** only when a PR referencing it has merged:
+```
+gh pr list --search "<n> in:body" --state all --json number,state,url
+```
+Any returned PR with `state: MERGED` resolves the edge. A returned PR with `state: OPEN`
+means the dependency is open-but-unmerged — refuse to dispatch the dependent issue this
+invocation (`status: "blocked-on-merge"`, `failure_reason: "depends on open PR <url>"`) and
+re-check on the next O5/O6 pass or the next invocation. No PR found yet is the same
+refusal: the dependency has simply not started.
+
+**Cycle detection.** Walk the graph before any dispatch. A cycle among candidate issues is
+a **fail-stop for the whole run** — report the full chain and dispatch nothing in the cycle
+or downstream of it. A cycle can never resolve on its own; unlike a migration or
+file-overlap lane, it is not something a later invocation can retry through.
+
+**Migration lane vs. dependency graph — two independent constraints, not one subsuming the
+other.** A migration-touching issue is serialised against every other migration-touching
+issue (the migrations lane, unchanged, in O3) regardless of its declared `Depends on`
+edges — the lane order is backlog order, not graph order, and applies even when the issue
+names no dependency at all. It must, in addition, still wait on its own declared
+dependencies to merge, even when those dependencies do not touch a migration. A
+non-migration issue with no declared dependency is never held up by the migrations lane.
+Do not re-derive one rule from the other.
+
+**Re-evaluation.** The ready set is not fixed at O1. Every time O6 records a `passed`
+result, re-walk the dependency graph for any issue whose only blocker was that PR merging —
+this is the same O6→O5 drain loop described in **the graph** below, extended to dependency
+edges as well as lane heads.
 
 ## The graph — this is the order authority
 
@@ -94,6 +164,10 @@ be started right now.
   you have not read. Predicted paths come from `task_env.py slug`, which is a pure function
   of the description — compute it once, pin it in `state.json`, and reuse it forever for that
   task, including across resumes on a different calendar day.
+- **Issue comments are a projection, never a second store.** `state.json` is written first;
+  a `gh issue comment` call happens only after the row it describes is already persisted.
+  A failed comment post is logged and ignored, not retried by reading GitHub state back into
+  `state.json` — the run-state file stays the one source of truth.
 
 ## O0 — pre-flight
 **Purpose.** Fail before touching disk if the toolchain is missing.
@@ -130,11 +204,13 @@ For a fresh run, seed `state.json`:
     {
       "id": "t1",
       "description": "<verbatim line>",
+      "issue_number": null,
       "slug": "<task_env.py slug output>",
       "date_pin": null,
       "migration": false,
       "lane": null,
       "status": "pending",
+      "commented_pickup": false,
       "worktree": null,
       "branch": null,
       "pr_number": null,
@@ -151,17 +227,35 @@ For a fresh run, seed `state.json`:
 ```
 Compute `slug` for every task now via `python3 .claude/skills/task/task_env.py slug "<description>"`
 — never hand-derive it; it must agree with what `/task` itself will compute at its own T1.
-**Exit.** `state.json` exists, every task has an `id` and a `slug`, the lock is held.
+
+**Issue-sourced backlog.** When the invocation is `--label`, `--milestone`, or an explicit
+`#<n>` list instead of free-text lines, fetch first:
+```
+gh issue list --state open --label <l> --json number,title,labels,url
+gh issue list --state open --milestone "<m>" --json number,title,labels,url
+gh issue view <n> --json number,title,body,labels,state,url
+```
+Run every issue returned through the **eligibility filter** (see **Issue eligibility and
+dependency graph** above) before it becomes a line of `RAW_INPUT`. Each surviving issue
+becomes one task with `description: "/task #<n>"` and `issue_number: <n>` set on its row;
+derive its `slug` from the issue title (`task_env.py slug "<issue title>"`), not from the
+literal string `/task #<n>`, so the predicted worktree path stays stable and legible. Append
+every rejected issue as a comment line in `$STATE_DIR/backlog.txt`
+(`# rejected #<n>: <clause>`) so a resumed run still has the rejection on hand for O7.
+**Exit.** `state.json` exists, every task has an `id` and a `slug` (and an `issue_number`
+where the backlog came from the tracker), the lock is held.
 **On failure.** A live lock younger than 2 hours → stop, report who holds it, do not proceed.
 
 ## O2 — overlap + migration scan
 **Purpose.** Flag tasks that will conflict at merge before either one is dispatched. This is
 static and cheap — no subagent, no LLM call.
-**Do.** For every task new to this run:
-1. **Migration tag.** Match the description case-insensitively against
+**Do.** For every task new to this run, using the description for a free-text task or the
+fetched issue title + body for an `issue_number` task (`/task #<n>` itself carries no
+signal to scan):
+1. **Migration tag.** Match the source text case-insensitively against
    `\b(migration|alembic|schema|column|drop table|new table|rename table|add.*model|model field)\b`.
    Any hit → `migration: true`.
-2. **Predicted file hits.** Extract tokens ≥4 chars, minus stopwords, from the description.
+2. **Predicted file hits.** Extract tokens ≥4 chars, minus stopwords, from the source text.
    Keep only tokens that also occur as a file or directory basename under `backend/app` or
    `frontend/src`:
    ```
@@ -173,10 +267,19 @@ static and cheap — no subagent, no LLM call.
    ```
 3. **Pairwise overlap.** Two non-migration tasks overlap when their predicted hit sets
    intersect. Record the pair.
+4. **Dependency graph.** For every `issue_number` task, parse `Depends on #<n>` out of its
+   issue body and add the edge to `state.json`'s `dependency_graph` (an adjacency list keyed
+   by issue number). Detect cycles now, before any lane exists — see **Issue eligibility
+   and dependency graph** above for how an edge is later resolved at dispatch time.
 This is a heuristic, not a guarantee — it exists to catch the common case (two tasks naming
 the same router, model, or component) cheaply, not to prove independence formally.
-**Exit.** Every task has `migration` set, and every overlapping pair is recorded.
-**Produces.** The overlap-pair list and the migration-tagged set, consumed by O3.
+**Exit.** Every task has `migration` set, every overlapping pair is recorded, and the
+dependency graph, if any, is acyclic.
+**On failure.** A cycle among candidate issues → hard stop the whole run, report the full
+chain, dispatch nothing in it or downstream of it. This is the one case where O2 itself can
+end the run.
+**Produces.** The overlap-pair list, the migration-tagged set, and the dependency graph,
+consumed by O3.
 
 ## O3 — lane assignment
 **Purpose.** Turn overlap findings into a dispatch order that cannot produce two colliding
@@ -195,6 +298,13 @@ merges. A lane is a strict FIFO queue; different lanes run concurrently, up to `
   `MERGED` → admit the next migration task. `OPEN` → leave it `status: "blocked-on-merge"`
   and do not dispatch it this invocation; a later invocation re-checks. `CLOSED` (abandoned,
   unmerged) → stop and report to the human; do not auto-advance the lane.
+- **Dependency admission, orthogonal to lanes.** A task with one or more `Depends on #<n>`
+  edges is queued into its lane as normal, but at the moment it would otherwise be
+  dispatched (O5) every edge is re-checked per **Issue eligibility and dependency graph**
+  above. Any edge unresolved → `status: "blocked-on-merge"`; it stays at the head of its
+  lane (blocking whatever else is queued behind it, exactly like a migration awaiting merge)
+  and dispatch moves to the next eligible lane instead. This applies whether or not the task
+  is also in the migrations lane — the two constraints stack, neither replaces the other.
 - **File-overlap lanes.** For every recorded overlapping pair, put both tasks in one shared
   lane (union overlapping pairs transitively into groups), FIFO by backlog order. Admission
   into the next slot only requires the previous lane member to reach any terminal status
@@ -252,6 +362,14 @@ wave, not a stream — refill happens in the O5↔O6 loop instead).
 with a `pending` task and no task currently `dispatched`. For a task never dispatched before,
 set `date_pin = date -u +%F` now and freeze it in `state.json` — every later redispatch of
 this same task reuses this value, so paths stay stable across a resume that crosses midnight.
+For a task with an `issue_number`, immediately before dispatch, re-check
+`gh pr list --search "<n> in:body" --state open --json number,url`. A non-empty result
+means another run claimed it since O1/O2 ran — leave it `pending`, skip it this wave, and
+let the next O5 pass re-evaluate it. Otherwise, if `commented_pickup` is not yet `true`,
+claim it: `gh issue comment <n> --body "Picked up by orchestrate run <RUN>, task <id>."`,
+then set `commented_pickup: true` and persist `state.json` before dispatching — the comment
+is the claim signal, so it must land before the subagent starts, and it is never repeated on
+a later redispatch of the same task.
 Dispatch each chosen task as one `Agent` call, `general-purpose`, `model: "opus"`, in a single
 message covering the whole wave. Prompt, verbatim except the placeholders:
 ```
@@ -278,6 +396,15 @@ immediately — a crash between dispatch and collection must find these as resum
 **Exit.** Every free slot this pass either got a task or had none eligible.
 **Produces.** The wave's Agent results, arriving together in O6.
 
+**Claim safety.** The pre-dispatch re-check plus the pickup comment above are the whole
+mechanism — there is no server-side lock on an issue. The residual race: two orchestrate
+runs (or a human and a run) can both pass the re-check within the same few seconds, before
+either comment lands, and both dispatch against the same issue. Nothing here prevents that;
+it is caught downstream, not avoided — the loser's `/task` run still opens its own PR, and a
+human reconciles two PRs for one issue at merge time. Closing the gap fully would need an
+atomic claim (a label add, a lock issue) that this skill does not implement; this note exists
+so an operator knows to look for a duplicate PR rather than assume the race cannot happen.
+
 ## O6 — collect + persist
 **Purpose.** Turn each subagent's one report block into a state update, without absorbing
 anything else it may have said.
@@ -286,10 +413,15 @@ Update that task's row: `status`, `pr_number`, `pr_url`, `worktree`, `failure_re
 `finished_at`. Derive `gate1`/`gate2` from `status` (`gate1-fail` → G1 failed, G2 never run;
 `gate2-fail` → G1 passed, G2 failed; `hard-stop` → record which gate was in progress from the
 reason line; `passed` → both green). Release the task's lane. Persist `state.json`.
+For a task with an `issue_number`, comment the outcome after the row is persisted:
+`gh issue comment <n> --body "<status>: <one-line reason if not passed>, <PR url if any>"`.
+The comment reflects the row just written; a failed post is logged and skipped, never a
+reason to stop the run.
 **Exit.** Every wave member has a terminal or `blocked-on-merge` status recorded.
 **Loop.** If any lane now has a free head and a `pending` (or a `blocked-on-merge` that just
-became admittable — re-check `gh pr view` for the migrations lane) task, return to **O5**.
-Otherwise fall through to **O7**.
+became admittable — re-check `gh pr view` for the migrations lane, or the dependency-edge
+check in **Issue eligibility and dependency graph** for a graph-blocked task) task, return to
+**O5**. Otherwise fall through to **O7**.
 
 ## O7 — final report
 **Purpose.** One table, everything a human or the external loop needs, nothing they must dig
@@ -300,6 +432,9 @@ file path if the worktree was kept, PR URL, or the QA handoff dir at
 `${TMPDIR:-/tmp}/task-qa/<slug>/`). Then one line: how many tasks remain `pending` or
 `blocked-on-merge`, and that re-invoking `/orchestrate` with the same `--run=<id>` (or letting
 the external loop do so) resumes exactly them.
+For an issue-sourced run, print a second short table from the `# rejected #<n>: <clause>`
+lines in `$STATE_DIR/backlog.txt` — every issue the eligibility filter turned away, with the
+clause that rejected it. Rejection is a line in this report, never a silent drop.
 **Exit.** Report printed. State file is the durable record; do not delete it.
 
 ## Resumability
