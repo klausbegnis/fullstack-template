@@ -119,7 +119,7 @@ Backend, from `backend/`:
 |---|---|
 | Install | `uv sync` |
 | Run dev server | `uv run python main.py` (needs `DATABASE_URL`, see above) |
-| Test | `uv run pytest` — **130 passed, 24 skipped** without `DATABASE_URL` (integration tier silently skipped); **154 passed** with it. A green run without `DATABASE_URL` is not full coverage. |
+| Test | `uv run pytest` — **180 passed, 24 skipped** without `DATABASE_URL` (integration tier silently skipped); **204 passed** with it. A green run without `DATABASE_URL` is not full coverage. |
 | Lint | `uv run ruff check .` |
 | Format check / write | `uv run ruff format --check .` / `uv run ruff format .` |
 | Typecheck | `uv run mypy app` |
@@ -176,12 +176,42 @@ z.output<S>>` + `zodResolver` (the two-type-param form is mandatory under strict
 Actions are reserved for setting/clearing the httpOnly session cookie only (login/logout).
 Reference: `features/users/containers/create-user-form.tsx`.
 
+## Work comes from issues, context comes from PRDs
+
+Two artefacts, two jobs. Confusing them is the most common way this repo gets misused.
+
+| | PRD (`docs/prds/<NNNN>-<slug>.md`) | Issue (GitHub) |
+|---|---|---|
+| Answers | why, and what "done" means for a capability | what to build next, as one mergeable change |
+| Lifetime | lives as long as the capability | closes when the PR merges |
+| Lives in | the repo, versioned, reviewed as a diff | the tracker |
+| Read by | every agent, by construction — it is a file in the worktree | `/task` at intake, via `gh` |
+
+An issue without a PRD is fine for a bug or a chore. A feature whose reasoning exists only in an
+issue thread is not: an agent working in a detached worktree cannot see that thread, and it will
+rediscover, or invent, the reasoning you already did.
+
+`/groom` writes the PRD and spawns the issues from its `Work breakdown` table. `/task` consumes
+one issue. The round trip only works because both ends agree on the issue body headings that
+`.github/ISSUE_TEMPLATE/*.yml` renders — `What is it`, `Specs`, `Pre-exploration`,
+`Acceptance criteria`, `Out of scope`, `Related documents`, `Area`. Those strings are a contract,
+enforced by `backend/tests/unit/architecture/test_repo_contracts.py`. Rename a field in a form and
+that test fails until the parser and `/groom` agree again.
+
+`Pre-exploration` is a head start, never evidence. It was true when it was written. Verify every
+path and claim it hands you before you rely on it; a stale pre-exploration section is the most
+likely way this pipeline produces a confidently wrong change.
+
+Contribution standards — branch names, commit format, Definition of Done, the label taxonomy —
+live in [`CONTRIBUTING.md`](./CONTRIBUTING.md) and apply to agents exactly as they do to humans.
+
 ## Skills and agents (`.claude/`)
 
 | Path | Purpose |
 |---|---|
-| `.claude/skills/task/SKILL.md` | `/task <description> [--gate=manual\|auto]` — two-gate pipeline (plan/implement/review, then isolated QA) from a worktree to a ready-for-review PR. |
-| `.claude/skills/orchestrate/SKILL.md` | `/orchestrate <items>` — runs a backlog of `/task` items concurrently with a bounded worker pool and per-task isolation. |
+| `.claude/skills/groom/SKILL.md` | `/groom <idea>` — turns a product idea into a reviewed PRD under `docs/prds/` and the GitHub issues `/task` executes. The only skill that creates issues. |
+| `.claude/skills/task/SKILL.md` | `/task #123 \| <description> [--gate=manual\|auto]` — two-gate pipeline (plan/implement/review, then isolated QA) from a worktree to a ready-for-review PR. |
+| `.claude/skills/orchestrate/SKILL.md` | `/orchestrate --label <l> \| <items>` — runs an eligible backlog of `/task` items concurrently with a bounded worker pool and per-task isolation. |
 | `.claude/agents/backend-reviewer.md` | Reviews a backend diff/branch against the layering, migration, DI, auth, and error-contract rules above; runs ruff/mypy/alembic/pytest as evidence. |
 | `.claude/agents/frontend-reviewer.md` | Reviews a frontend diff/branch against import boundaries, server/client rules, auth, and forms; runs lint/typecheck/format/test/build. |
 | `.claude/agents/uncle-bob.md` | Clean-code review — naming, function size, duplication, and enforcement of the no-comments rule — across both stacks. |

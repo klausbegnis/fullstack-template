@@ -12,6 +12,7 @@ fi
 
 backend_changed=$(printf '%s\n' "$staged" | grep -c '^backend/' || true)
 frontend_changed=$(printf '%s\n' "$staged" | grep -c '^frontend/' || true)
+harness_changed=$(printf '%s\n' "$staged" | grep -cE '^(\.github|\.claude|docs/prds|scripts)/' || true)
 
 if [ "$backend_changed" -gt 0 ]; then
   echo "pre-commit: backend"
@@ -29,4 +30,9 @@ if [ "$frontend_changed" -gt 0 ]; then
   npm run --prefix frontend test:fast
 else
   echo "pre-commit: frontend unchanged, skipped"
+fi
+
+if [ "$harness_changed" -gt 0 ] && [ "$backend_changed" -eq 0 ]; then
+  echo "pre-commit: harness contracts"
+  uv run --directory backend pytest tests/unit/architecture/test_repo_contracts.py -q
 fi
