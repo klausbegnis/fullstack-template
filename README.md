@@ -105,7 +105,9 @@ agent.
 This template ships a small pipeline for agent-driven development. Claude discovers
 skills under `.claude/skills/` with `/name` commands; Codex discovers corresponding
 skills under `.agents/skills/` with `$name` commands. Codex reviewer agents live in
-`.codex/agents/` and read the maintained rubrics in `.claude/agents/`.
+`.codex/agents/` and read the maintained rubrics in `.claude/agents/`. Ask Codex
+to delegate a review to `backend-reviewer`, `frontend-reviewer`, or `uncle-bob`
+by name.
 
 | Claude / Codex | Purpose |
 |---|---|

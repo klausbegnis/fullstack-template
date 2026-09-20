@@ -335,6 +335,7 @@ def test_codex_skill_points_to_maintained_workflow(name: str) -> None:
     metadata = yaml.safe_load(match.group(1))
     assert metadata["name"] == name
     assert metadata["description"].strip()
+    assert "git rev-parse --show-toplevel" in contents
     assert (REPO_ROOT / ".claude" / "skills" / name / "SKILL.md").is_file()
     assert f".claude/skills/{name}/SKILL.md" in contents
     assert "AGENTS.md" in contents
@@ -348,7 +349,9 @@ def test_codex_reviewer_uses_maintained_rubric(name: str) -> None:
     config = tomllib.loads(path.read_text(encoding="utf-8"))
     assert config["name"] == name
     assert config["description"].strip()
+    assert config["sandbox_mode"] == "read-only"
     instructions = config["developer_instructions"]
+    assert "git rev-parse --show-toplevel" in instructions
     assert "AGENTS.md" in instructions
     assert f".claude/agents/{name}.md" in instructions
     assert "Do not edit files or commit" in instructions
