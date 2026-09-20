@@ -5,7 +5,8 @@ description: Turn a product idea or rough notes into a reviewed repository PRD a
 
 # Groom a product idea
 
-Read root `AGENTS.md`, `CONTRIBUTING.md`, `docs/prds/README.md`, and the current
+Resolve the repository root with `git rev-parse --show-toplevel`. Read root-relative
+`AGENTS.md`, `CONTRIBUTING.md`, `docs/prds/README.md`, and the current
 `.claude/skills/groom/SKILL.md` before starting. The Claude skill is the maintained
 source for the PRD template, issue headings, decomposition rules, and gate semantics.
 Use those repository contracts, adapting Claude-only commands and tools to the

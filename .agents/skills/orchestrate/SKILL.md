@@ -5,7 +5,8 @@ description: Coordinate an eligible backlog of multiple implementation tasks wit
 
 # Coordinate a backlog
 
-Read root `AGENTS.md`, `CONTRIBUTING.md`, `.claude/skills/orchestrate/SKILL.md`,
+Resolve the repository root with `git rev-parse --show-toplevel`. Read root-relative
+`AGENTS.md`, `CONTRIBUTING.md`, `.claude/skills/orchestrate/SKILL.md`,
 and `.agents/skills/task/SKILL.md`. The Claude orchestration skill maintains the
 eligibility filter, dependency and overlap rules, run-state format, and issue
 status contract. Apply those shared decisions with available Codex tools; adapt
