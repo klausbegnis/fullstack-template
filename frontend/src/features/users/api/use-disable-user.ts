@@ -1,5 +1,3 @@
-"use client";
-
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { disableUserUsersUserIdDelete } from "@/lib/api/generated/endpoints/users/users";
 import { userQueries } from "@/features/users/api/user-queries";

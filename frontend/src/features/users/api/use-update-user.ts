@@ -1,5 +1,3 @@
-"use client";
-
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { updateUserUsersUserIdPatch } from "@/lib/api/generated/endpoints/users/users";
 import { unwrapGenerated } from "@/lib/api/unwrap-generated";

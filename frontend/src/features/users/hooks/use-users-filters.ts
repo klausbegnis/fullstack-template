@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 import { DEFAULT_USER_FILTERS } from "@/features/users/model/user-filters";
 import type { UserFilters } from "@/features/users/model/user-filters";
