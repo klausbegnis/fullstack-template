@@ -1,0 +1,14 @@
+export interface {{Entity}} {
+  id: string;
+{{domain_fields}}
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface {{Entities}}Page {
+  items: {{Entity}}[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}

@@ -1,0 +1,28 @@
+import type { {{ReadDto}} } from "@/lib/api/generated/model";
+import type { {{Entity}} } from "@/features/{{feature}}/model/{{entity-file}}";
+
+/**
+ * Builds the backend DTO shape MSW handlers and the mapper test need.
+ */
+export function build{{Entity}}Dto(overrides: Partial<{{ReadDto}}> = {}): {{ReadDto}} {
+  return {
+    id: "00000000-0000-4000-8000-000000000001",
+{{factory_dto_fields}}
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+/**
+ * Builds the domain object component and hook tests render.
+ */
+export function build{{Entity}}(overrides: Partial<{{Entity}}> = {}): {{Entity}} {
+  return {
+    id: "00000000-0000-4000-8000-000000000001",
+{{factory_domain_fields}}
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-01-01T00:00:00Z"),
+    ...overrides,
+  };
+}

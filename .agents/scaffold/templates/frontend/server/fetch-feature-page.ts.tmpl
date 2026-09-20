@@ -1,0 +1,24 @@
+import "server-only";
+import { apiServerFetch } from "@/lib/api/server-client";
+import { to{{Entities}}Page } from "@/features/{{feature}}/api/{{entity-file}}-mapper";
+import type { {{PageDto}} } from "@/lib/api/generated/model";
+import type { {{Entity}}Filters } from "@/features/{{feature}}/model/{{entity-file}}-filters";
+import type { {{Entities}}Page } from "@/features/{{feature}}/model/{{entity-file}}";
+
+/**
+ * Fetches one page of {{feature-words}} directly from FastAPI, forwarding the
+ * incoming request's cookies. Used only from `app/(app)/{{feature}}/page.tsx`
+ * to seed the TanStack Query cache before the client hydrates; the client
+ * reads the same query key through `{{entity}}Queries.list`.
+ */
+export async function fetch{{Entities}}PageServer(
+  filters: {{Entity}}Filters,
+): Promise<{{Entities}}Page> {
+  const response = await apiServerFetch<{{PageDto}}>({
+    url: "/{{feature}}",
+    method: "GET",
+    params: { page: filters.page, page_size: filters.pageSize },
+  });
+
+  return to{{Entities}}Page(response);
+}
