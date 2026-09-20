@@ -149,8 +149,8 @@ you have run a subset that happens to exit 0.
 `.githooks/pre-commit` is change-scoped: it inspects staged paths and only runs the stack that
 changed. On staged `backend/` files it runs `ruff format --check`, `ruff check`, and
 `pytest tests/unit` (unit tier only, no database). On staged `frontend/` files it runs `format`,
-`lint`, and `test:fast`. On staged `.github/`, `.claude/`, `docs/prds/` or `scripts/` files it
-runs the harness contract tests. An untouched stack is skipped entirely. It does not run mypy,
+`lint`, and `test:fast`. On staged `.github/`, `.claude/`, `.agents/`, `.codex/`, `docs/prds/` or `scripts/`
+files it runs the harness contract tests, the task-environment tests and the hook tests. An untouched stack is skipped entirely. It does not run mypy,
 `typecheck`, `build`, or the database-backed integration tests — those are CI's job.
 
 Install it per clone:
@@ -172,14 +172,17 @@ do not bypass it.
 - [ ] `backend/openapi.json` regenerated and committed if the API contract changed, and
       `frontend/src/lib/api/generated/**` regenerated to match.
 - [ ] New/changed models have an accompanying Alembic migration; `alembic check` is clean.
-- [ ] New router/service code has the required boundary/architecture test.
-- [ ] Relevant `docs/development/backend.md` or `docs/development/frontend.md` checklist items
-      satisfied.
+- [ ] The architecture tests under `backend/tests/unit/architecture/` and the frontend
+      `src/testing/architecture.node.test.ts` pass; they discover new routers, services, features
+      and pages automatically, so a new slice needs tests but no new architecture test.
+- [ ] The path-scoped rules in `.agents/rules/` for every touched path are satisfied (each rule
+      names the check that enforces it).
 - [ ] CI is green.
 
 ## Review
 
-Three review agents in `.claude/agents/` cover a PR's diff:
+Three read-only review agents, maintained in `.agents/agents/` and exposed to Claude Code via
+`.claude/agents/` and to Codex via `.codex/agents/`, cover a PR's diff:
 
 - `backend-reviewer` — layering, migrations, DI, auth, error contract.
 - `frontend-reviewer` — import boundaries, server/client rules, auth, forms.

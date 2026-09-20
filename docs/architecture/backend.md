@@ -19,11 +19,11 @@ Rules, each backed by an automated check:
 
 | Layer | Rule | Enforcement |
 |---|---|---|
-| router | No import of `app.repositories`, `app.models`, `sqlalchemy`, or `app.core.database` | AST-parsed by `tests/unit/architecture/test_<feature>_boundaries.py` |
-| service | No import of `fastapi`; owns the transaction boundary; `__init__` has no defaulted parameters | Reviewed by hand + `test_user_service_dependency_is_non_optional_and_request_scoped` |
-| repository | Constructor takes `session: AsyncSession`; `.flush()` only, never `.commit()`; never raises `APIException` | Reviewed by hand |
-| model | `Mapped[...]` declarative; every table pins `__table_args__ = {"schema": ...}` | Reviewed by hand + `alembic check` catches drift |
-| `app/dependencies/` | Only layer importing both `Depends` and service/repository classes; one `get_<x>_service` + `XServiceDep` alias per feature | Convention, mirrored across `dependencies/auth.py` and `dependencies/user.py` |
+| router | No import of `app.repositories`, `app.models`, `sqlalchemy`, or `app.core.database`; no `HTTPException` | AST-parsed by `tests/unit/architecture/test_layer_boundaries.py` |
+| service | No import of `fastapi`; owns the transaction boundary; `__init__` has no defaulted parameters | `test_layer_boundaries.py` + `test_dependency_contracts.py` |
+| repository | Constructor takes `session: AsyncSession`; `.flush()` only, never `.commit()`; never raises `APIException` | `test_layer_boundaries.py` |
+| model | `Mapped[...]` declarative; every table pins `__table_args__ = {"schema": ...}` | `test_model_contracts.py` + `alembic check` catches drift |
+| `app/dependencies/` | Only layer importing both `Depends` and service/repository classes; one `get_<x>_service` + `XServiceDep` alias per feature | Convention, mirrored across `dependencies/auth.py` and `dependencies/users.py` |
 
 One `AsyncSession` is created per request by `app/core/database.py` (`get_session`, exposed as
 `SessionDep`) and shared by every repository the request's service constructs — a request never
@@ -135,10 +135,17 @@ happened during that request. Verified by `tests/integration/api/test_observabil
 
 ## Enforcement mechanisms (why the rules above are real)
 
-- `tests/unit/architecture/test_auth_boundaries.py` and `test_user_boundaries.py` AST-parse the
-  router source and assert no forbidden import exists, and use `inspect.signature`/`get_args` to
-  assert the DI dependency alias resolves to the real service type with no defaulted constructor
-  parameters. A new router without a matching boundary test is a gap, not a pass.
+- `tests/unit/architecture/` is discovery-based, so a new feature is covered without a new test
+  file: `test_layer_boundaries.py` AST-parses every router, service, repository and model for the
+  import table in `.agents/rules/backend/layering.md` (plus `.commit()`/`HTTPException` bans);
+  `test_dependency_contracts.py` resolves every `XServiceDep` to a service with no defaulted
+  constructor parameters; `test_route_contracts.py` walks `app.routes` for an auth dependency,
+  envelope return annotations, status codes, unique operation ids and static-before-parameterized
+  ordering; `test_model_contracts.py` checks every table's schema pin; `test_migration_contracts.py`
+  checks the single head and the enum recipe; `test_test_conventions.py` requires one unit module
+  per service, one integration module per router, and fakes instead of `unittest.mock`.
+- `.agents/hooks/guard_paths.py` (PreToolUse in both harnesses) refuses edits to migrations
+  already on `main`; `.agents/hooks/post_edit_check.sh` runs ruff on every edited file.
 - `uv run alembic check` fails CI on any drift between the ORM models and the migration history.
 - `uv run mypy app` runs in strict mode (`tool.mypy` in `pyproject.toml`) across the whole `app`
   package.
