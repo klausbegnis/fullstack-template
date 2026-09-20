@@ -1,0 +1,101 @@
+name: Bug
+description: Report behaviour that contradicts the stated specification
+title: "[Bug] "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report behaviour that contradicts a stated spec, not a preference about how
+        something should work. Include exact requests, responses, and log lines
+        where you have them.
+  - type: textarea
+    id: what-is-it
+    attributes:
+      label: What is it
+      description: One or two sentences summarising the bug.
+      placeholder: Login returns a 500 instead of a 401 when the password is wrong for an existing user.
+    validations:
+      required: true
+  - type: textarea
+    id: observed-behaviour
+    attributes:
+      label: Observed behaviour
+      description: What actually happens, including error messages, status codes, and logs.
+      placeholder: |
+        `POST /api/auth/login` with a wrong password returns `500 Internal Server
+        Error`. Backend log shows `AttributeError: 'NoneType' object has no
+        attribute 'verify'` in `app/services/auth.py`.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behaviour
+    attributes:
+      label: Expected behaviour
+      description: What should happen instead, per the stated specification.
+      placeholder: >-
+        Should return `401` with `APIException` code `invalid_credentials`, the
+        same response as when the user does not exist at all.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Exact steps, request payloads, or a failing test that reproduces the issue every time.
+      placeholder: |
+        1. `POST /api/auth/login` with `{"email": "existing@user.com", "password": "wrong"}`.
+        2. Observe a 500 instead of a 401.
+        Reproduces on `main` at any commit after `a1b2c3d`.
+    validations:
+      required: true
+  - type: textarea
+    id: pre-exploration
+    attributes:
+      label: Pre-exploration
+      description: >-
+        The head start an implementing agent gets: known files, prior art,
+        constraints already discovered, and open questions. Filled in during
+        grooming so the agent does not have to rediscover it.
+      placeholder: |
+        - Root cause looks like `PasswordHasher().verify(None, password)` in
+          `auth.py::authenticate` when `user` is `None` but the code still
+          calls `.verify`.
+        - Fix should return/raise before reaching `.verify` when the user lookup
+          misses, matching the nonexistent-user path.
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: A testable checklist. Each line should be verifiable by a specific test or manual step.
+      placeholder: |
+        - [ ] A regression test in `tests/unit/services/test_auth.py` covers
+              both the wrong-password and the nonexistent-user cases.
+        - [ ] Both cases return `401` with the same `APIException` code, so response
+              shape cannot be used to enumerate accounts.
+    validations:
+      required: true
+  - type: input
+    id: related-documents
+    attributes:
+      label: Related documents
+      description: Repo-relative path to the PRD or spec this bug violates, if any.
+      placeholder: docs/prds/0001-user-management.md
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the stack this bug lives in. Pick every area it spans.
+      multiple: true
+      options:
+        - backend
+        - frontend
+        - full-stack
+        - devops
+        - security
+    validations:
+      required: true

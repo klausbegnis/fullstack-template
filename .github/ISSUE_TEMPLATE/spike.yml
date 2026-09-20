@@ -1,0 +1,90 @@
+name: Spike
+description: Time-box an investigation that produces a document, not a feature
+title: "[Spike] "
+labels: [spike, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for a time-boxed investigation. The deliverable is a document (a
+        write-up, a comparison, a recommendation), not shipped code.
+  - type: textarea
+    id: what-is-it
+    attributes:
+      label: What is it
+      description: One or two sentences on the question this spike answers.
+      placeholder: Investigate whether refresh-token rotation should move from a DB table to Redis before we scale past one API instance.
+    validations:
+      required: true
+  - type: textarea
+    id: specs
+    attributes:
+      label: Specs
+      description: The question to answer, the time box, and the shape of the deliverable.
+      placeholder: |
+        - Time box: two days.
+        - Compare the current `RefreshToken` table (`app/models/auth_session.py`) against a
+          Redis-backed store on write latency and operational complexity.
+        - Deliverable: a short doc in `docs/spikes/` with a recommendation and a
+          rough migration cost.
+    validations:
+      required: true
+  - type: textarea
+    id: pre-exploration
+    attributes:
+      label: Pre-exploration
+      description: >-
+        The head start an implementing agent gets: known files, prior art,
+        constraints already discovered, and open questions. Filled in during
+        grooming so the agent does not have to rediscover it.
+      placeholder: |
+        - Current implementation: `app/repositories/auth_sessions.py`,
+          one row per session, indexed on `user_id`.
+        - No Redis instance exists in `docker-compose.yml` yet; would need to be
+          added alongside `db`.
+        - Open question: does session revocation-on-logout need to stay
+          synchronous, or can it be eventually consistent?
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: A testable checklist. Each line should be verifiable by a specific test or manual step.
+      placeholder: |
+        - [ ] Doc lands at `docs/spikes/<NNNN>-refresh-token-store.md` with a clear
+              recommendation.
+        - [ ] Doc states the migration cost in engineer-days and lists the
+              follow-up issues it implies.
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What this issue explicitly does not cover, so an agent does not scope-creep into it.
+      placeholder: Implementing the migration; this spike only produces the recommendation.
+    validations:
+      required: false
+  - type: input
+    id: related-documents
+    attributes:
+      label: Related documents
+      description: Repo-relative path to any PRD or prior spike this investigation builds on, if any.
+      placeholder: docs/prds/0001-user-management.md
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the stack this investigation concerns. Pick every area it spans.
+      multiple: true
+      options:
+        - backend
+        - frontend
+        - full-stack
+        - devops
+        - security
+    validations:
+      required: true

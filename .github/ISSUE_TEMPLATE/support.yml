@@ -1,0 +1,52 @@
+name: Support
+description: Ask a question or request help, without proposing a code change
+title: "[Support] "
+labels: [support]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for a question or a request for help, not a code change. If you
+        already know what should change, use the Feature or Bug form instead.
+  - type: textarea
+    id: what-is-it
+    attributes:
+      label: What is it
+      description: The question you need answered, as specifically as you can state it.
+      placeholder: I can't tell why `npm run typecheck` fails after regenerating the API client.
+    validations:
+      required: true
+  - type: textarea
+    id: what-you-already-tried
+    attributes:
+      label: What you already tried
+      description: Commands you ran, docs you checked, and what happened, so we don't ask you to repeat them.
+      placeholder: |
+        - Ran `npm run generate:api` then `npm run typecheck`; got 12 errors in
+          `src/lib/api/generated/`.
+        - Checked the `AGENTS.md` frontend commands table; `backend/.env` has
+          `DATABASE_URL` set and the backend server is running.
+    validations:
+      required: false
+  - type: input
+    id: related-documents
+    attributes:
+      label: Related documents
+      description: Repo-relative path to any PRD or doc this question relates to, if any.
+      placeholder: docs/prds/0001-user-management.md
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the stack this question is about. Pick every area it spans.
+      multiple: true
+      options:
+        - backend
+        - frontend
+        - full-stack
+        - devops
+        - security
+    validations:
+      required: true

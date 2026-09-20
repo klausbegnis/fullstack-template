@@ -19,10 +19,12 @@ assembled by reading them in sequence.
 ## Task
 Description: <the invocation text, verbatim — never paraphrased>
 Gate mode: auto | manual
-Branch: task/<YYYY-MM-DD>-<slug>
+Branch: task/<YYYY-MM-DD>-<slug> | <type>/<issue-number>-<slug>
 Worktree: <absolute path>
 Base: origin/main @ <sha>
 Slug: <slug>
+Source: #<issue-number> <issue-url>        <!-- only when T1's source is an issue -->
+PRD: <docs/prds/NNNN-slug.md>              <!-- only when Related documents named one -->
 
 ## Exploration            <!-- T4 -->
 Where this lives today:
