@@ -1,0 +1,15 @@
+import { z } from "zod";
+
+export const create{{Entity}}Schema = z.object({
+{{zod_create_fields}}
+});
+
+export type Create{{Entity}}Input = z.input<typeof create{{Entity}}Schema>;
+export type Create{{Entity}}Values = z.output<typeof create{{Entity}}Schema>;
+
+export const update{{Entity}}Schema = z.object({
+{{zod_update_fields}}
+});
+
+export type Update{{Entity}}Input = z.input<typeof update{{Entity}}Schema>;
+export type Update{{Entity}}Values = z.output<typeof update{{Entity}}Schema>;

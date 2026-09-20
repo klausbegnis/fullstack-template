@@ -1,0 +1,15 @@
+export interface {{Entity}}Filters {
+  page: number;
+  pageSize: number;
+}
+
+export const DEFAULT_{{ENTITY}}_FILTERS: {{Entity}}Filters = { page: 1, pageSize: 20 };
+
+/**
+ * Returns the filters moved to `page`, clamped to the first page. A pure
+ * function in `model/` so the hook that owns the state stays a thin wrapper
+ * and the paging rule itself is unit-tested without React.
+ */
+export function withPage(filters: {{Entity}}Filters, page: number): {{Entity}}Filters {
+  return { ...filters, page: Math.max(1, page) };
+}

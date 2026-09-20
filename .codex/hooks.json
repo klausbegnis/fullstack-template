@@ -1,0 +1,31 @@
+{
+  "description": "Codex side of the shared hook scripts maintained under .agents/hooks.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "apply_patch|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel)\"/.agents/hooks/guard_paths.py",
+            "timeout": 120,
+            "statusMessage": "Checking the edit target"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel)\"/.agents/hooks/post_edit_check.sh",
+            "timeout": 120,
+            "statusMessage": "Formatting, linting, and loading the matching rules"
+          }
+        ]
+      }
+    ]
+  }
+}

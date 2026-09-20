@@ -1,0 +1,35 @@
+import { act, renderHook } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { use{{Entities}}Filters } from "@/features/{{feature}}/hooks/use-{{feature}}-filters";
+
+describe("use{{Entities}}Filters", () => {
+  it("starts on the first page with the previous guard closed", () => {
+    const { result } = renderHook(() => use{{Entities}}Filters());
+
+    expect(result.current.filters.page).toBe(1);
+    expect(result.current.canGoToPreviousPage).toBe(false);
+    expect(result.current.canGoToNextPage(3)).toBe(true);
+  });
+
+  it("moves to the requested page and updates the derived guards", () => {
+    const { result } = renderHook(() => use{{Entities}}Filters());
+
+    act(() => {
+      result.current.goToPage(2);
+    });
+
+    expect(result.current.filters.page).toBe(2);
+    expect(result.current.canGoToPreviousPage).toBe(true);
+    expect(result.current.canGoToNextPage(2)).toBe(false);
+  });
+
+  it("never goes below the first page", () => {
+    const { result } = renderHook(() => use{{Entities}}Filters());
+
+    act(() => {
+      result.current.goToPage(0);
+    });
+
+    expect(result.current.filters.page).toBe(1);
+  });
+});

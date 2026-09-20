@@ -1,0 +1,88 @@
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import type { {{Entity}} } from "@/features/{{feature}}/model/{{entity-file}}";
+
+export interface {{Entities}}ListViewProps {
+  {{feature-camel}}: readonly {{Entity}}[];
+  status: "loading" | "error" | "ready";
+  page: number;
+  totalPages: number;
+  canGoToPreviousPage: boolean;
+  canGoToNextPage: boolean;
+  onPreviousPage: () => void;
+  onNextPage: () => void;
+}
+
+/**
+ * Renders the {{feature-words}} table and its pagination controls from props
+ * only. It carries no `'use client'` directive and still renders on the
+ * server — code crosses through imports, data crosses through props.
+ */
+export function {{Entities}}ListView({
+  {{feature-camel}},
+  status,
+  page,
+  totalPages,
+  canGoToPreviousPage,
+  canGoToNextPage,
+  onPreviousPage,
+  onNextPage,
+}: {{Entities}}ListViewProps) {
+  return (
+    <div className="flex flex-col gap-4">
+      <h1 className="text-lg font-semibold text-gray-900">{{Title}}</h1>
+
+      {status === "loading" ? (
+        <div className="flex justify-center p-12">
+          <Spinner label="Loading {{feature-words}}" />
+        </div>
+      ) : null}
+
+      {status === "error" ? (
+        <Alert tone="danger" title="Failed to load {{feature-words}}" />
+      ) : null}
+
+      {status === "ready" ? (
+        <>
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 text-gray-500">
+{{table_headers}}
+              </tr>
+            </thead>
+            <tbody>
+              {{{feature-camel}}.map((item) => (
+                <tr key={item.id} className="border-b border-gray-100">
+{{table_cells}}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="flex items-center justify-between">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!canGoToPreviousPage}
+              {...{ onClick: onPreviousPage }}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-gray-500">
+              Page {page} of {totalPages || 1}
+            </span>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!canGoToNextPage}
+              {...{ onClick: onNextPage }}
+            >
+              Next
+            </Button>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}

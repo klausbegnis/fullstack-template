@@ -11,7 +11,7 @@ from .auth import (
     require_admin,
 )
 from .database import SessionDep, get_auth_session, get_session
-from .user import SelfOrAdmin, UserServiceDep, get_user_service, require_self_or_admin
+from .users import SelfOrAdmin, UserServiceDep, get_user_service, require_self_or_admin
 
 __all__ = [
     "AuthContextDep",

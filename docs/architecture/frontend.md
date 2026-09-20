@@ -10,7 +10,7 @@ Next.js 16.3.5 (App Router, Turbopack), React 19, TypeScript 5.9 strict, Tailwin
 src/
   app/            routes only: page/layout/loading/error/not-found. A page imports a
                   container and renders it; it does not itself hold markup or logic.
-  features/<f>/   model | api | hooks | containers | components | server | __tests__
+  features/<f>/   model | api | hooks | containers | components | server | actions | testing
   components/ui/  props-only, feature-agnostic primitives (+ components/layout/)
   lib/            api/{generated,mutator,server-client,envelope,...} | auth/{dal,set-cookie} |
                   query | errors | env
@@ -134,8 +134,17 @@ unconditionally, to keep the fast loop fast.
 
 ## Enforcement mechanisms
 
-- `eslint-plugin-boundaries` (import direction) and `eslint-plugin-use-client` (server/client
-  correctness) run as part of `npm run lint`, not as advice.
+- `eslint-plugin-boundaries` enforces both the cross-layer rule and the intra-feature rule
+  (`containers -> hooks -> api -> model`, `model` free of `react`/`next`/`@tanstack`) and
+  `eslint-plugin-use-client` the server/client directive, as part of `npm run lint`, not as advice.
+  `no-restricted-syntax` bans `'use client'` outside `containers/`, `process.env` outside
+  `lib/env.ts`, `vi.mock` of the generated client and test-id queries; `eslint-plugin-testing-library`
+  and `@vitest/eslint-plugin` enforce role-based, behaviour-level tests.
+- `src/testing/architecture.node.test.ts` checks the file-level contracts lint cannot see: no
+  barrels, a colocated test per container/component/model/mapper/hook, `loading.tsx` + `error.tsx`
+  beside async pages, `server-only` in server modules, `requireUser()` in the app layout.
+- `.agents/hooks/guard_paths.py` refuses hand edits to `src/lib/api/generated/`;
+  `.agents/hooks/post_edit_check.sh` runs prettier and eslint on every edited file.
 - `local/no-comments-except-tsdoc` (`tools/eslint/no-comments-except-tsdoc.cjs`) fails lint on any
   comment that is not a `/** */` TSDoc block directly above an exported declaration.
 - `no-restricted-imports` blocks client code from importing server-only modules by path pattern.

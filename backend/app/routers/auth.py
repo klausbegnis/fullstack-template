@@ -11,7 +11,7 @@ from app.schemas.api.auth import AuthUserRead, LoginRequest
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/login", response_model=AuthUserRead)
+@router.post("/login")
 async def login(
     payload: LoginRequest,
     response: Response,
@@ -52,7 +52,7 @@ async def refresh(
     )
 
 
-@router.get("/me", response_model=AuthUserRead)
+@router.get("/me")
 async def me(user: CurrentUser, service: AuthServiceDep) -> AuthUserRead:
     return await service.to_auth_user(user)
 

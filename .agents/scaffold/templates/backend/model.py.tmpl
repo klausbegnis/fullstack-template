@@ -1,0 +1,32 @@
+from __future__ import annotations
+
+from datetime import datetime
+import uuid
+
+from sqlalchemy import {{model_sa_imports}}
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import Uuid
+
+from .base import Base
+from .db_schemas import {{schema_const}}
+
+
+class {{Entity}}(Base):
+    """A {{entity}} row owned by the {{schema}} bounded context."""
+
+    __tablename__ = "{{table}}"
+    __table_args__ = {"schema": {{schema_const}}}
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+{{model_columns}}
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )

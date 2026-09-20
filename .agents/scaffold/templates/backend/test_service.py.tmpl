@@ -1,0 +1,139 @@
+from __future__ import annotations
+
+import asyncio
+from datetime import UTC, datetime
+import uuid
+
+import pytest
+from sqlalchemy.exc import IntegrityError
+
+from app.core.exceptions import ConflictException, NotFoundException
+from app.models.{{entity}} import {{Entity}}
+from app.schemas.api.{{entities}} import (
+    {{Entity}}Create,
+    {{Entity}}ListFilters,
+    {{Entity}}Update,
+)
+from app.services.{{entities}} import {{Entity}}Service
+from tests.support.fakes import FakeSession
+
+
+def make_{{entity}}(**overrides: object) -> {{Entity}}:
+    """Build a persisted-looking {{entity}} without touching a database."""
+    values: dict[str, object] = {
+        "id": uuid.uuid4(),
+{{fake_record_values}}
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+    }
+    values.update(overrides)
+    return {{Entity}}(**values)
+
+
+class Fake{{Entity}}Repository:
+    """In-memory stand-in for `{{Entity}}Repository` with no database behind it."""
+
+    def __init__(
+        self, records: list[{{Entity}}], *, fail_on_create: bool = False
+    ) -> None:
+        self._records = {record.id: record for record in records}
+        self._fail_on_create = fail_on_create
+
+    async def get(self, {{entity}}_id: uuid.UUID) -> {{Entity}} | None:
+        return self._records.get({{entity}}_id)
+
+    async def get_for_update(self, {{entity}}_id: uuid.UUID) -> {{Entity}} | None:
+        return self._records.get({{entity}}_id)
+
+    async def list(self, *, offset: int, limit: int) -> tuple[list[{{Entity}}], int]:
+        ordered = sorted(self._records.values(), key=lambda record: record.created_at)
+        return ordered[offset : offset + limit], len(ordered)
+
+    async def create(self, *, {{repository_create_params}}) -> {{Entity}}:
+        if self._fail_on_create:
+            raise IntegrityError("insert", {}, Exception("duplicate"))
+        record = make_{{entity}}({{fake_create_overrides}})
+        self._records[record.id] = record
+        return record
+
+    async def update(
+        self,
+        record: {{Entity}},
+        *,
+{{repository_update_params}}
+    ) -> {{Entity}}:
+{{repository_update_assignments}}
+        return record
+
+
+def build_service(
+    records: list[{{Entity}}], **kwargs: bool
+) -> tuple[{{Entity}}Service, FakeSession]:
+    """Wire the service under test to a fake session and repository."""
+    session = FakeSession()
+    repository = Fake{{Entity}}Repository(records, **kwargs)
+    return (
+        {{Entity}}Service(session=session, {{entities}}=repository),  # type: ignore[arg-type]
+        session,
+    )
+
+
+def test_list_{{entities}}_paginates_and_reports_total() -> None:
+    service, _ = build_service([make_{{entity}}() for _ in range(3)])
+
+    items, total = asyncio.run(
+        service.list_{{entities}}({{Entity}}ListFilters(page=1, page_size=2))
+    )
+
+    assert total == 3
+    assert len(items) == 2
+
+
+def test_get_{{entity}}_raises_not_found_for_unknown_id() -> None:
+    service, _ = build_service([])
+
+    with pytest.raises(NotFoundException):
+        asyncio.run(service.get_{{entity}}(uuid.uuid4()))
+
+
+def test_create_{{entity}}_commits_once() -> None:
+    service, session = build_service([])
+
+    result = asyncio.run(service.create_{{entity}}({{Entity}}Create({{create_payload_literal}})))
+
+    assert result.id is not None
+    assert session.commits == 1
+    assert session.rollbacks == 0
+
+
+def test_create_{{entity}}_translates_integrity_error_to_conflict() -> None:
+    service, session = build_service([], fail_on_create=True)
+
+    with pytest.raises(ConflictException):
+        asyncio.run(service.create_{{entity}}({{Entity}}Create({{create_payload_literal}})))
+
+    assert session.commits == 0
+    assert session.rollbacks == 1
+
+
+def test_update_{{entity}}_applies_the_payload_and_commits_once() -> None:
+    record = make_{{entity}}()
+    service, session = build_service([record])
+
+    result = asyncio.run(
+        service.update_{{entity}}(record.id, {{Entity}}Update({{update_payload_literal}}))
+    )
+
+    assert {{update_assertion}}
+    assert session.commits == 1
+
+
+def test_update_{{entity}}_raises_not_found_for_unknown_id() -> None:
+    service, _ = build_service([])
+
+    with pytest.raises(NotFoundException):
+        asyncio.run(
+            service.update_{{entity}}(
+                uuid.uuid4(), {{Entity}}Update({{update_payload_literal}})
+            )
+        )

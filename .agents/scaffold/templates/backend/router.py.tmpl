@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+from math import ceil
+from typing import Annotated
+import uuid
+
+from fastapi import APIRouter, Query, status
+
+from app.dependencies import CurrentUser, RequireAdmin, {{Entity}}ServiceDep
+from app.schemas.api import PaginatedResponse, SuccessResponse
+from app.schemas.api.{{entities}} import (
+    {{Entity}}Create,
+    {{Entity}}ListFilters,
+    {{Entity}}Read,
+    {{Entity}}Update,
+)
+
+router = APIRouter(prefix="/{{entities}}", tags=["{{entities}}"])
+
+
+@router.get("")
+async def list_{{entities}}(
+    _actor: CurrentUser,
+    service: {{Entity}}ServiceDep,
+    filters: Annotated[{{Entity}}ListFilters, Query()],
+) -> PaginatedResponse[{{Entity}}Read]:
+    """List {{entities}} one page at a time."""
+    items, total = await service.list_{{entities}}(filters)
+    total_pages = ceil(total / filters.page_size) if total else 0
+    return PaginatedResponse(
+        data=items,
+        total=total,
+        page=filters.page,
+        page_size=filters.page_size,
+        total_pages=total_pages,
+    )
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+async def create_{{entity}}(
+    payload: {{Entity}}Create,
+    _actor: RequireAdmin,
+    service: {{Entity}}ServiceDep,
+) -> SuccessResponse[{{Entity}}Read]:
+    """Create one {{entity}}."""
+    data = await service.create_{{entity}}(payload)
+    return SuccessResponse(message="{{Entity}} created", data=data)
+
+
+@router.get("/{{{entity}}_id}")
+async def get_{{entity}}(
+    {{entity}}_id: uuid.UUID,
+    _actor: CurrentUser,
+    service: {{Entity}}ServiceDep,
+) -> SuccessResponse[{{Entity}}Read]:
+    """Return one {{entity}} by identifier."""
+    data = await service.get_{{entity}}({{entity}}_id)
+    return SuccessResponse(data=data)
+
+
+@router.patch("/{{{entity}}_id}")
+async def update_{{entity}}(
+    {{entity}}_id: uuid.UUID,
+    payload: {{Entity}}Update,
+    _actor: RequireAdmin,
+    service: {{Entity}}ServiceDep,
+) -> SuccessResponse[{{Entity}}Read]:
+    """Apply a partial update to one {{entity}}."""
+    data = await service.update_{{entity}}({{entity}}_id, payload)
+    return SuccessResponse(message="{{Entity}} updated", data=data)
+
+
+__all__ = ["router"]

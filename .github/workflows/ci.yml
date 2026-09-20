@@ -60,6 +60,37 @@ jobs:
       - name: Test
         run: uv run pytest
 
+      - name: Verify the committed OpenAPI contract is current
+        run: |
+          uv run python -m app.commands.export_openapi
+          git diff --exit-code -- openapi.json
+
+  harness:
+    name: Harness
+    runs-on: ubuntu-latest
+    env:
+      AUTH_JWT_SECRET: github-actions-insecure-secret-value-32b
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Test the task environment helper
+        run: python3 .agents/skills/task/scripts/test_task_env.py
+
+      - name: Test the hook scripts
+        run: python3 .agents/hooks/test_hooks.py
+
+      - name: Scaffold validator tests
+        run: python3 .agents/scaffold/test_validate_scaffold.py
+
+      - name: Architecture and harness contracts
+        run: uv sync --locked && uv run pytest tests/unit/architecture -q
+        working-directory: backend
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest

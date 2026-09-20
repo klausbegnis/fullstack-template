@@ -1,0 +1,25 @@
+import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
+import { getQueryClient } from "@/lib/query/query-client";
+import { {{entity}}Queries } from "@/features/{{feature}}/api/{{entity-file}}-queries";
+import { fetch{{Entities}}PageServer } from "@/features/{{feature}}/server/fetch-{{feature}}-page";
+import { DEFAULT_{{ENTITY}}_FILTERS } from "@/features/{{feature}}/model/{{entity-file}}-filters";
+import { {{Entities}}ListPage } from "@/features/{{feature}}/containers/{{feature}}-list-page";
+
+export default async function Page() {
+  const queryClient = getQueryClient();
+  const listOptions = {{entity}}Queries.list(DEFAULT_{{ENTITY}}_FILTERS);
+
+  await queryClient
+    .query({
+      queryKey: listOptions.queryKey,
+      queryFn: () => fetch{{Entities}}PageServer(DEFAULT_{{ENTITY}}_FILTERS),
+      staleTime: listOptions.staleTime,
+    })
+    .catch(() => undefined);
+
+  return (
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <{{Entities}}ListPage />
+    </HydrationBoundary>
+  );
+}

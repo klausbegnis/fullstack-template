@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 import uuid
 
 import pytest
-from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import (
     ConflictException,
@@ -13,133 +11,20 @@ from app.core.exceptions import (
     NotFoundException,
     ValidationException,
 )
-from app.core.security import hash_password
 from app.models.user import User, UserRole
-from app.repositories.users import normalize_email
 from app.schemas.api.users import UserCreate, UserListFilters, UserUpdate
 from app.services.users import UserService, normalize_name
+from tests.support.fakes import FakeSession, FakeUserRepository, make_user
 
 
-class _FakeTransaction:
-    def __init__(self, session: _FakeSession) -> None:
-        self._session = session
-
-    async def __aenter__(self) -> _FakeSession:
-        self._session._in_transaction = True
-        return self._session
-
-    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> bool:
-        if exc_type is None:
-            await self._session.commit()
-        else:
-            await self._session.rollback()
-        return False
-
-
-class _FakeSession:
-    def __init__(self) -> None:
-        self.commits = 0
-        self.rollbacks = 0
-        self._in_transaction = False
-
-    def in_transaction(self) -> bool:
-        return self._in_transaction
-
-    def begin(self) -> _FakeTransaction:
-        return _FakeTransaction(self)
-
-    async def commit(self) -> None:
-        self.commits += 1
-        self._in_transaction = False
-
-    async def rollback(self) -> None:
-        self.rollbacks += 1
-        self._in_transaction = False
-
-
-def _make_user(*, role: UserRole = UserRole.MEMBER, disabled: bool = False) -> User:
-    return User(
-        id=uuid.uuid4(),
-        name="Existing User",
-        email="existing@example.test",
-        email_normalized="existing@example.test",
-        password_hash=hash_password("Correct horse battery staple 123!"),
-        role=role,
-        created_at=datetime.now(UTC),
-        updated_at=datetime.now(UTC),
-        disabled_at=datetime.now(UTC) if disabled else None,
-    )
-
-
-class _FakeUserRepository:
-    def __init__(self, users: list[User], *, fail_on_create: bool = False) -> None:
-        self._users = {user.id: user for user in users}
-        self._fail_on_create = fail_on_create
-
-    async def get(self, user_id: uuid.UUID) -> User | None:
-        return self._users.get(user_id)
-
-    async def get_for_update(self, user_id: uuid.UUID) -> User | None:
-        return self._users.get(user_id)
-
-    async def list(self, *, offset: int, limit: int) -> tuple[list[User], int]:
-        ordered = sorted(self._users.values(), key=lambda user: user.created_at)
-        return ordered[offset : offset + limit], len(ordered)
-
-    async def count_active_admins(self, *, for_update: bool = False) -> int:
-        del for_update
-        return sum(
-            1
-            for user in self._users.values()
-            if user.role is UserRole.ADMIN and user.disabled_at is None
-        )
-
-    async def create(self, *, name: str, email: str, password_hash: str) -> User:
-        if self._fail_on_create:
-            raise IntegrityError("insert", {}, Exception("duplicate"))
-        user = User(
-            id=uuid.uuid4(),
-            name=name,
-            email=email,
-            email_normalized=normalize_email(email),
-            password_hash=password_hash,
-            role=UserRole.MEMBER,
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
-        )
-        self._users[user.id] = user
-        return user
-
-    async def update(
-        self,
-        user: User,
-        *,
-        name: str | None = None,
-        email: str | None = None,
-        role: UserRole | None = None,
-    ) -> User:
-        if name is not None:
-            user.name = name
-        if email is not None:
-            user.email = email
-            user.email_normalized = normalize_email(email)
-        if role is not None:
-            user.role = role
-        return user
-
-    async def disable(self, user: User) -> User:
-        user.disabled_at = datetime.now(UTC)
-        return user
-
-
-def _service(users: list[User], **kwargs: bool) -> tuple[UserService, _FakeSession]:
-    session = _FakeSession()
-    repository = _FakeUserRepository(users, **kwargs)
+def _service(users: list[User], **kwargs: bool) -> tuple[UserService, FakeSession]:
+    session = FakeSession()
+    repository = FakeUserRepository(users, **kwargs)
     return UserService(session=session, users=repository), session  # type: ignore[arg-type]
 
 
 def test_list_users_paginates_and_reports_total() -> None:
-    users = [_make_user() for _ in range(3)]
+    users = [make_user() for _ in range(3)]
     service, _ = _service(users)
 
     items, total = asyncio.run(service.list_users(UserListFilters(page=1, page_size=2)))
@@ -193,8 +78,8 @@ def test_create_user_translates_integrity_error_to_conflict() -> None:
 
 
 def test_update_user_rejects_role_change_from_non_admin_actor() -> None:
-    target = _make_user()
-    actor = _make_user(role=UserRole.MEMBER)
+    target = make_user()
+    actor = make_user(role=UserRole.MEMBER)
     service, _ = _service([target])
 
     with pytest.raises(ForbiddenException):
@@ -204,7 +89,7 @@ def test_update_user_rejects_role_change_from_non_admin_actor() -> None:
 
 
 def test_update_user_allows_self_edit_of_name() -> None:
-    target = _make_user()
+    target = make_user()
     service, session = _service([target])
 
     result = asyncio.run(
@@ -216,7 +101,7 @@ def test_update_user_allows_self_edit_of_name() -> None:
 
 
 def test_last_admin_guard_blocks_demotion() -> None:
-    admin = _make_user(role=UserRole.ADMIN)
+    admin = make_user(role=UserRole.ADMIN)
     service, _ = _service([admin])
 
     with pytest.raises(ValidationException):
@@ -226,8 +111,8 @@ def test_last_admin_guard_blocks_demotion() -> None:
 
 
 def test_demotion_succeeds_when_another_admin_remains() -> None:
-    admin = _make_user(role=UserRole.ADMIN)
-    other_admin = _make_user(role=UserRole.ADMIN)
+    admin = make_user(role=UserRole.ADMIN)
+    other_admin = make_user(role=UserRole.ADMIN)
     service, _ = _service([admin, other_admin])
 
     result = asyncio.run(
@@ -238,7 +123,7 @@ def test_demotion_succeeds_when_another_admin_remains() -> None:
 
 
 def test_last_admin_guard_blocks_disable() -> None:
-    admin = _make_user(role=UserRole.ADMIN)
+    admin = make_user(role=UserRole.ADMIN)
     service, _ = _service([admin])
 
     with pytest.raises(ValidationException):
@@ -246,8 +131,8 @@ def test_last_admin_guard_blocks_disable() -> None:
 
 
 def test_disable_succeeds_when_another_admin_remains() -> None:
-    admin = _make_user(role=UserRole.ADMIN)
-    other_admin = _make_user(role=UserRole.ADMIN)
+    admin = make_user(role=UserRole.ADMIN)
+    other_admin = make_user(role=UserRole.ADMIN)
     service, session = _service([admin, other_admin])
 
     result = asyncio.run(service.disable_user(admin.id))

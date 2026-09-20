@@ -1,0 +1,49 @@
+import { screen } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { describe, expect, it } from "vitest";
+import { server } from "@/testing/msw/server";
+import { renderWithProviders } from "@/testing/render";
+import { {{Entities}}ListPage } from "@/features/{{feature}}/containers/{{feature}}-list-page";
+import { build{{Entity}}Dto } from "@/features/{{feature}}/testing/factories";
+
+describe("{{Entities}}ListPage", () => {
+  it("renders the {{feature-words}} returned by the API", async () => {
+    server.use(
+      http.get("*/{{feature}}", () =>
+        HttpResponse.json({
+          success: true,
+          data: [build{{Entity}}Dto({ id: "a1" })],
+          total: 1,
+          page: 1,
+          page_size: 20,
+          total_pages: 1,
+        }),
+      ),
+    );
+
+    renderWithProviders(<{{Entities}}ListPage />);
+
+    expect(await screen.findByRole("table")).toBeInTheDocument();
+    expect(screen.getByText("Page 1 of 1")).toBeInTheDocument();
+  });
+
+  it("shows an error state when the request fails", async () => {
+    server.use(
+      http.get("*/{{feature}}", () =>
+        HttpResponse.json(
+          {
+            error: { code: "internal_error", message: "boom", details: null },
+            request_id: null,
+          },
+          { status: 500 },
+        ),
+      ),
+    );
+
+    renderWithProviders(<{{Entities}}ListPage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Failed to load {{feature-words}}",
+    );
+  });
+});

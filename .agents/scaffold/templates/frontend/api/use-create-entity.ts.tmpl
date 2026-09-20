@@ -1,0 +1,29 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { {{opCreate}} } from "{{generated_module}}";
+import { unwrapGenerated } from "@/lib/api/unwrap-generated";
+import { to{{Entity}} } from "@/features/{{feature}}/api/{{entity-file}}-mapper";
+import { {{entity}}Queries } from "@/features/{{feature}}/api/{{entity-file}}-queries";
+import type { {{ReadDto}} } from "@/lib/api/generated/model";
+import type { Create{{Entity}}Values } from "@/features/{{feature}}/model/{{entity-file}}-schema";
+import type { {{Entity}} } from "@/features/{{feature}}/model/{{entity-file}}";
+
+/**
+ * Creates a {{entity-words}} and invalidates every cached list so the new row
+ * appears without a manual refetch.
+ */
+export function useCreate{{Entity}}() {
+  const queryClient = useQueryClient();
+  return useMutation<{{Entity}}, unknown, Create{{Entity}}Values>({
+    mutationFn: async (values) => {
+      const dto = unwrapGenerated<{{ReadDto}}>(
+        await {{opCreate}}({
+{{create_dto_fields}}
+        }),
+      );
+      return to{{Entity}}(dto);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: {{entity}}Queries.lists() });
+    },
+  });
+}
