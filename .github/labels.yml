@@ -1,0 +1,43 @@
+labels:
+  - name: backend
+    color: 0E8A16
+    description: FastAPI, SQLAlchemy, Alembic, backend tests
+  - name: frontend
+    color: 1D76DB
+    description: Next.js, React, TypeScript, frontend tests
+  - name: full-stack
+    color: 5319E7
+    description: Spans backend and frontend in one change
+  - name: devops
+    color: 0052CC
+    description: CI, Docker, tooling, hooks, release plumbing
+  - name: security
+    color: B60205
+    description: Authentication, authorisation, secrets, dependency risk
+  - name: bug
+    color: D73A4A
+    description: Behaviour that contradicts the stated specification
+  - name: feature
+    color: A2EEEF
+    description: New capability that does not exist yet
+  - name: chore
+    color: FEF2C0
+    description: Maintenance with no behaviour change
+  - name: spike
+    color: C5DEF5
+    description: Time-boxed investigation that produces a document, not a feature
+  - name: docs
+    color: 0075CA
+    description: Documentation only
+  - name: support
+    color: D876E3
+    description: A question or a request for help, not a code change
+  - name: needs-triage
+    color: E4E669
+    description: Not yet specified well enough to start
+  - name: agent-ready
+    color: 0E8A16
+    description: Specification is complete enough for an unattended agent
+  - name: blocked
+    color: B60205
+    description: Waiting on another issue, a decision, or an external party
