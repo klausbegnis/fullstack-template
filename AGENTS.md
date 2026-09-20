@@ -205,7 +205,7 @@ likely way this pipeline produces a confidently wrong change.
 Contribution standards — branch names, commit format, Definition of Done, the label taxonomy —
 live in [`CONTRIBUTING.md`](./CONTRIBUTING.md) and apply to agents exactly as they do to humans.
 
-## Skills and agents (`.claude/`)
+## Skills and agents
 
 | Path | Purpose |
 |---|---|
@@ -216,9 +216,15 @@ live in [`CONTRIBUTING.md`](./CONTRIBUTING.md) and apply to agents exactly as th
 | `.claude/agents/frontend-reviewer.md` | Reviews a frontend diff/branch against import boundaries, server/client rules, auth, and forms; runs lint/typecheck/format/test/build. |
 | `.claude/agents/uncle-bob.md` | Clean-code review — naming, function size, duplication, and enforcement of the no-comments rule — across both stacks. |
 
-**Non-Claude agents (e.g. Codex):** these live under `.claude/skills/` and `.claude/agents/` in
-this repo, not the `.agents/skills/` path some tools look for by convention. This `AGENTS.md` is
-the canonical, tool-agnostic entry point regardless of where an agent expects skills to live.
+Codex discovers the matching `$groom`, `$task`, and `$orchestrate` skills under
+`.agents/skills/`, and the three reviewer agents under `.codex/agents/`. Their
+short adapters point to the maintained workflow contracts and review rubrics
+above, while translating Claude-specific tool and model instructions. Keep
+project rules here in `AGENTS.md`; keep review criteria in the existing
+`.claude/agents/` files. When a shared workflow contract changes, update its
+Codex adapter if needed and run the agent contract tests. Keep provider-specific
+invocation and tooling in its own entry point. `CLAUDE.md` remains a one-line
+pointer to this file.
 
 ## `next dev` will generate its own AGENTS.md/CLAUDE.md inside `frontend/`
 
