@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for the dockerless logic in task_env.py.
 
-Run with `python3 .claude/skills/task/test_task_env.py`. Nothing here touches
+Run with `python3 .agents/skills/task/scripts/test_task_env.py`. Nothing here touches
 docker, the network, or the developer's stack.
 """
 

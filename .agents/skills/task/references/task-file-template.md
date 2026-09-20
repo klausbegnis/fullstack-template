@@ -76,7 +76,7 @@ Acceptance criteria (observable behaviour, not tasks):
 A command that was not run is written `UNVERIFIED — <reason>`, never folded into PASS.
 
 ### Review
-| Agent | Verdict | Blockers | Resolution |
+| Reviewer | Verdict | Blockers | Resolution |
 |---|---|---|---|
 | backend-reviewer | PASS / FAIL (n) | <file:line — issue> | fixed in <sha> / refuted by <measurement> |
 | frontend-reviewer | ... | ... | ... |
