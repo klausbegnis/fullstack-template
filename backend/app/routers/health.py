@@ -5,8 +5,8 @@ from app.schemas.api import HealthResponse, SuccessResponse
 router = APIRouter(tags=["health"])
 
 
-@router.get("/health", response_model=SuccessResponse[HealthResponse])
-def health() -> SuccessResponse[HealthResponse]:
+@router.get("/health")
+async def health() -> SuccessResponse[HealthResponse]:
     """Return the service health status."""
     return SuccessResponse(
         message="Service is healthy", data=HealthResponse(status="ok")

@@ -18,14 +18,6 @@ from app.repositories.auth_sessions import AuthSessionRepository
 from app.repositories.users import UserRepository
 from app.services.auth import AuthRequestContext, AuthService, RefreshResult
 
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(
-        not os.getenv("DATABASE_URL"),
-        reason="PostgreSQL DATABASE_URL is not configured",
-    ),
-]
-
 
 def _factory():
     engine = create_engine(database_url=os.environ["DATABASE_URL"])

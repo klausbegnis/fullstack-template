@@ -50,9 +50,11 @@ select = [
     "S",
     "C90",
     "PLR0915",
+    "T20",
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"app/commands/*" = ["T20"]
 "tests/*" = ["S101", "S105", "S106", "S107", "S311", "S603", "PLR0915"]
 "alembic/*" = ["N999", "PLR0915"]
 

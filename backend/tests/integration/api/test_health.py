@@ -1,8 +1,6 @@
 from fastapi.testclient import TestClient
-import pytest
 
 
-@pytest.mark.integration
 def test_health_endpoint(client: TestClient) -> None:
     response = client.get("/health")
 
@@ -14,7 +12,6 @@ def test_health_endpoint(client: TestClient) -> None:
     }
 
 
-@pytest.mark.integration
 def test_health_returns_json(client: TestClient) -> None:
     response = client.get("/health")
 
