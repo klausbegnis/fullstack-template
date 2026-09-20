@@ -117,15 +117,15 @@ just authentication in isolation.
 - `uv run pytest` passes with `DATABASE_URL` set, including
   `tests/integration/api/test_error_contract.py` and `tests/integration/api/test_observability.py`
   exercising the auth and users routes end to end.
-- `tests/unit/architecture/test_auth_boundaries.py` and `test_user_boundaries.py` pass, proving
-  `app/routers/auth.py` and `app/routers/users.py` import no repository, model, or SQLAlchemy
-  symbol, and that `AuthServiceDep`/`UserServiceDep` resolve to services with no defaulted
-  constructor parameters.
+- `tests/unit/architecture/test_layer_boundaries.py` and
+  `tests/unit/architecture/test_dependency_contracts.py` pass, proving `app/routers/auth.py` and
+  `app/routers/users.py` import no repository, model, or SQLAlchemy symbol, and that
+  `AuthServiceDep`/`UserServiceDep` resolve to services with no defaulted constructor parameters.
 - `uv run alembic check` reports no drift between `User`/`AuthSession`/`AuthRefreshToken` and the
   migration history.
 - `npm run test` passes, including
-  `features/users/__tests__/users-list-page.test.tsx` and
-  `features/auth/__tests__/login-form.test.tsx`.
+  `features/users/containers/users-list-page.test.tsx` and
+  `features/auth/containers/login-form.test.tsx`.
 - Zero findings from `tests/unit/architecture/test_no_comments.py` (backend) and
   `local/no-comments-except-tsdoc` (frontend lint) inside `app/` and `features/{auth,users}/`.
 - A fresh `docker compose up --build` followed by `bootstrap_user` produces a working login at

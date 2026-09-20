@@ -1,7 +1,9 @@
 # AGENTS.md — fullstack-template
 
 Fullstack template (FastAPI backend + Next.js frontend) with one worked domain — auth + users —
-built to be extended by agents. This file states only what an agent would get wrong unguided.
+built to be extended by agents. This file holds only what every session needs on every turn.
+Everything scoped to a part of the tree lives in `.agents/rules/` (see the Rules index) and loads
+when you touch matching files. `CLAUDE.md` files are one line, `@AGENTS.md`, everywhere.
 
 ## Tech stack — exact resolved versions (do not assume a newer/older API)
 
@@ -20,114 +22,84 @@ built to be extended by agents. This file states only what an agent would get wr
 | mypy (strict) | 2.3.1 | eslint-plugin-boundaries | 7.2.0 |
 | pytest | 9.1.1 | eslint-plugin-use-client | 1.2.0 |
 | PostgreSQL | 16 | prettier | 3.5.3 |
-| — | — | Node.js | 22 (pinned in `frontend/.nvmrc` and `package.json` `engines.node`; CI uses 22) |
+| — | — | Node.js | 22 (`frontend/.nvmrc`, `engines.node`; CI uses 22) |
 
 Backend uses `uv`; frontend uses `npm` (`package-lock.json` committed). eslint is pinned to
 `9.39.5` exactly — `eslint-config-next@16.3.5` breaks on ESLint 10.
 
-## Backend layering — enforced by AST tests, not convention
+## Rules index — read the matching file before editing
 
-`router -> service -> repository -> model`. `tests/unit/architecture/*_boundaries.py` AST-parses
-routers and fails the build on a violation; add a matching `test_<feature>_boundaries.py` for any
-new router.
+Rules are enforced by tests, lint and hooks; each rule names its check. Claude Code loads them
+automatically through the `.claude/rules` symlink when a matching file is read. Codex: read the
+file yourself before editing (the PostToolUse hook also injects the matching rules after an edit).
 
-- **router**: HTTP only. Must not import `app.repositories`, `app.models`, `sqlalchemy`, or
-  `app.core.database`.
-- **service**: owns domain validation, RBAC, and the transaction boundary. Must not import `fastapi`. Every mutation
-  runs inside `async with transaction(self._session):` from `app/core/transactions.py` — never a bespoke
-  `@asynccontextmanager` or a bare `.commit()`. This repo used to duplicate that helper across services; do not
-  reintroduce it.
-- **repository**: constructor takes `session: AsyncSession`; calls `.flush()` only, never
-  `.commit()`; raises no `APIException`.
-- **model**: SQLAlchemy 2.0 declarative, `Mapped[...]`, never imports upward. Every table pins
-  `__table_args__ = {"schema": ...}` — schema-per-bounded-context (`app/models/db_schemas.py`
-  currently defines `infra` and `iam`). New models register by import side effect in
-  `app/models/__init__.py`.
-- **app/dependencies/**: the only layer importing both `Depends` and service+repository classes.
-  One `get_<x>_service` + `XServiceDep = Annotated[XService, Depends(get_<x>_service)]` per
-  feature, re-exported from `app/dependencies/__init__.py`. Service `__init__` must have **no
-  defaulted parameters** (asserted by `test_user_service_dependency_is_non_optional_...`).
-- List endpoints return `PaginatedResponse[T]`; single-item endpoints return `SuccessResponse[T]`.
-  Domain errors are always `APIException` subclasses from `app/core/exceptions.py` — never a raw
-  `HTTPException`.
+| Rule file | Loads for |
+|---|---|
+| `.agents/rules/backend/layering.md` | `backend/app/**` — router → service → repository → model, DI aliases, envelopes, `APIException` only, `async def` everywhere |
+| `.agents/rules/backend/persistence.md` | `backend/app/models/**`, `backend/app/repositories/**`, `backend/alembic/**` — schema pins, naming convention, `.flush()` only, migrations |
+| `.agents/rules/backend/api-crud.md` | `backend/app/{routers,schemas,services,dependencies}/**` — the CRUD recipe: auth dep per route, return annotations, status codes, transaction boundary, contract sync |
+| `.agents/rules/backend/testing.md` | `backend/tests/**` — two tiers, fakes over mocks, one test module per service and router |
+| `.agents/rules/frontend/architecture.md` | `frontend/src/**` — dependency rule incl. intra-feature layers, no barrels, generated client behind a mapper |
+| `.agents/rules/frontend/server-client.md` | `frontend/src/app/**`, `features/*/{server,actions}/**`, `lib/auth/**` — RSC by default, `server-only`, `requireUser()`, pages = prefetch + container |
+| `.agents/rules/frontend/data-and-forms.md` | `features/*/{api,containers,hooks,model}/**` — TanStack Query factories, mutations, derived state, forms |
+| `.agents/rules/frontend/ui-components.md` | `frontend/src/components/**`, `features/*/components/**` — props-only views, no `'use client'`, accessibility |
+| `.agents/rules/frontend/testing.md` | `frontend/src/**/*.test.*`, `frontend/src/testing/**` — layer → test type, MSW only, role queries |
+| `.agents/rules/harness.md` | `.claude/**`, `.agents/**`, `.codex/**`, `.github/**`, `docs/prds/**` — issue/PRD contract, single-source layout |
 
-## Frontend boundaries — enforced by eslint-plugin-boundaries
+Nested guides `backend/AGENTS.md` and `frontend/AGENTS.md` repeat their side's index and carry
+the `## Code Review Rules` Codex applies per changed file in PR review.
 
-`app -> features -> components(ui) -> lib`. `lib` imports only `lib`. **No feature imports another feature.** Inside a
-feature: `containers -> hooks -> api -> model`; `model` imports no `react`, `next`, or `@tanstack/*` (plain
-types/zod/pure functions — see `features/users/model/`). Configured in `frontend/eslint.config.mjs`; it silently
-reports nothing if `import/resolver` is ever removed from that config — verify with a planted violation if you touch
-it. No barrel (`index.ts` re-export) files anywhere under `src/` except the generated client.
+## Always-on rules (they fail dangerously if missed)
 
-## No inline comments — enforced on both stacks
-
-- Frontend: `local/no-comments-except-tsdoc` (`frontend/tools/eslint/no-comments-except-tsdoc.cjs`)
-  is wired into `eslint.config.mjs` and fails `npm run lint` on any comment that is not a `/** */`
-  TSDoc block directly above an exported declaration.
-- Backend: docstrings only, no inline `#` comments explaining code. Ruff does **not** enforce
-  this, but `backend/tests/unit/architecture/test_no_comments.py` does: it tokenizes every `.py`
-  file under `app/`, `alembic/` and `tests/` and fails on any comment that isn't a functional
-  directive (`# noqa`, `# type:`, `# pragma:`, `# ruff:`, `# mypy:`, `#!`). It runs as part of
-  `pytest`, so it is covered by CI and the pre-commit hook's unit-test run.
-
-## Server vs. client components
-
-Rule of thumb, not "container/presentational": **code crosses through imports, data crosses
-through props.** `'use client'` only where a client-only feature (state, effects, event handlers,
-browser APIs) is genuinely used; `eslint-plugin-use-client` fails on both a missing directive and
-an unnecessary one. **Files under `features/*/components/` carry no `'use client'` and still
-render on the server** — they are props-only views, not "presentational-therefore-client".
-`containers/` is where the client boundary and hooks legitimately live.
-
-## Auth
-
-httpOnly cookies only — `app_access`, `app_refresh` (path `/api/auth`), and a **readable**
-`app_csrf` used for double-submit CSRF on mutating requests. **Never `localStorage` /
-`sessionStorage`** for tokens (XSS-prone, and blocks RSC from reading auth state).
-`frontend/src/middleware.ts` does a cheap cookie-presence redirect only — **it is not the
-authorization boundary** (CVE-2025-29927: middleware can be bypassed; Next.js 16.3+ also deprecates
-this file convention in favor of `proxy.ts` — same security point either way). The real gate is
-`frontend/src/lib/auth/dal.ts` (`import "server-only"`, wrapped in React `cache()`) — every
-protected route/layout/Server Action must call `requireUser()`/`getCurrentUser()` from there.
+- **Layering is tested, not conventional.** `backend/tests/unit/architecture/` AST-parses every
+  router, service, repository and model; `frontend/eslint.config.mjs` (`eslint-plugin-boundaries`)
+  enforces `app -> features -> components(ui) -> lib` and `containers -> hooks -> api -> model`
+  inside a feature. Both are discovery-based: a new feature needs no new architecture test.
+- **No inline comments on either stack.** Backend: docstrings only
+  (`tests/unit/architecture/test_no_comments.py`). Frontend: only `/** */` TSDoc directly above an
+  exported declaration (`local/no-comments-except-tsdoc`). Intent goes in names and structure.
+- **Domain errors are `APIException` subclasses** from `app/core/exceptions.py`, never a raw
+  `HTTPException`. Every mutation runs inside `async with transaction(self._session):` from
+  `app/core/transactions.py`; nothing else commits.
+- **Auth is httpOnly cookies only** — `app_access`, `app_refresh` (path `/api/auth`) and a readable
+  `app_csrf` for double-submit CSRF. Never `localStorage`/`sessionStorage`. `frontend/src/middleware.ts`
+  (`proxy.ts` in Next 16.3+) is a cookie-presence redirect, not the authorization boundary
+  (CVE-2025-29927); the gate is `frontend/src/lib/auth/dal.ts` (`requireUser()`/`getCurrentUser()`).
+- **`'use client'` only where a client-only feature is genuinely used** — code crosses through
+  imports, data crosses through props. `features/*/components/` render on the server.
+- **Never edit a migration that is on `main`; never hand-edit `frontend/src/lib/api/generated/`.**
+  The PreToolUse hook refuses both.
+- **Never claim that a test, integration, recovery procedure, or external check passed unless it
+  was actually run.** Quote the output.
 
 ## Environment variables — required before anything runs
 
-`backend/.env.example` is the reference for every setting; copy it to `backend/.env` before
-running anything backend-related.
+`backend/.env.example` is the reference; copy it to `backend/.env` first.
 
-- **`DATABASE_URL`** — no working default; `postgresql+asyncpg://user:pass@host:port/db`. Required
-  by `uv run python main.py`, `alembic upgrade head`/`check`, and the integration test tier — all
-  three hard-crash with an unhandled pydantic `ValidationError` (not a friendly message) if unset.
-- **`AUTH_JWT_SECRET`** — required, >= 32 bytes, **no default anywhere**: a bare local run fails
-  closed and `docker-compose.yml` (`${AUTH_JWT_SECRET:?...}`) refuses to start. By design — a
-  template must never ship a working signing key. Tests are the sole exception (`TESTING=true`
-  injects a fixed test-only key). Generate:
-  `python -c 'import secrets; print(secrets.token_urlsafe(48))'`.
+- **`DATABASE_URL`** — no default; `postgresql+asyncpg://user:pass@host:port/db`. Required by
+  `uv run python main.py`, `alembic upgrade head`/`check` and the integration test tier; all crash
+  with an unhandled pydantic `ValidationError` if unset.
+- **`AUTH_JWT_SECRET`** — required, >= 32 bytes, no default anywhere; `docker-compose.yml` refuses
+  to start without it. Tests are the sole exception (`TESTING=true` injects a fixed key).
+  Generate: `python -c 'import secrets; print(secrets.token_urlsafe(48))'`.
 
-Local example (from `backend/`): `cp .env.example .env && echo
-'DATABASE_URL=postgresql+asyncpg://app:app@localhost:5432/app' >> .env`.
+Quickstart (repo root): `AUTH_JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+docker compose up --build` — the `api` container runs `alembic upgrade head` on start.
 
-**Quickstart — Docker Compose** (repo root, `docker-compose.yml`: `db`/`api`/`frontend` services):
-`AUTH_JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))") docker compose
-up --build` — the `api` container runs `alembic upgrade head` on start.
-
-## Commands (all verified against this checkout)
+## Commands (verified against this checkout)
 
 Backend, from `backend/`:
 
 | Task | Command |
 |---|---|
 | Install | `uv sync` |
-| Run dev server | `uv run python main.py` (needs `DATABASE_URL`, see above) |
-| Test | `uv run pytest` — **180 passed, 24 skipped** without `DATABASE_URL` (integration tier silently skipped); **204 passed** with it. A green run without `DATABASE_URL` is not full coverage. |
-| Lint | `uv run ruff check .` |
-| Format check / write | `uv run ruff format --check .` / `uv run ruff format .` |
+| Run dev server | `uv run python main.py` |
+| Test | `uv run pytest` — the integration tier is **silently skipped** without `DATABASE_URL`; a green run without it is not full coverage |
+| Lint / format | `uv run ruff check .` · `uv run ruff format --check .` (`ruff format .` to write) |
 | Typecheck | `uv run mypy app` |
-| Apply migrations | `uv run alembic upgrade head` (needs a reachable `DATABASE_URL`, see above) |
-| Check migrations vs. models | `uv run alembic check` (same precondition) |
-| Create a migration (recommended) | `uv run python -m app.commands.create_migration -m "<msg>"` (`--empty` for no autogenerated body) — runs `alembic revision --autogenerate`, strips the banner comments Alembic injects, then runs `ruff check --fix`/`ruff format` so the output is compliant with no manual cleanup. |
-| Create a migration (raw) | `uv run alembic revision --autogenerate -m "<msg>"` — works, but leaves `# ### commands auto generated ... ###` banner comments in the file that must be removed by hand to satisfy the no-comments rule. |
-| Export OpenAPI schema | `uv run python -m app.commands.export_openapi` (writes `backend/openapi.json`, no DB needed) |
+| Migrations | `uv run alembic upgrade head` · `uv run alembic check` (both need a reachable `DATABASE_URL`) |
+| Create a migration | `uv run python -m app.commands.create_migration -m "<msg>"` (`--empty` for no body) — strips Alembic's banner comments and formats the result |
+| Export OpenAPI | `uv run python -m app.commands.export_openapi` (writes `backend/openapi.json`; CI fails if it is stale) |
 
 Frontend, from `frontend/`:
 
@@ -136,100 +108,63 @@ Frontend, from `frontend/`:
 | Install | `npm ci` |
 | Regenerate API client (orval, reads `../backend/openapi.json`) | `npm run generate:api` |
 | Run dev server | `npm run dev` |
-| Build | `npm run build` |
-| Lint | `npm run lint` |
-| Typecheck | `npm run typecheck` |
+| Build / Lint / Typecheck | `npm run build` · `npm run lint` · `npm run typecheck` |
 | Format check / write | `npm run format` / `npm run format:write` |
-| Test (with coverage) | `npm run test` |
-| Test (fast, no coverage) | `npm run test:fast` |
+| Test (coverage) / fast | `npm run test` / `npm run test:fast` |
 
-`typecheck`/`test`/`build` each run `generate:api` first via `pretypecheck`/`pretest`/`prebuild`
-npm hooks — **`lint` does not**: there is no `prelint` script, and `npm run lint` (plain
-`eslint .`) passes even with `src/lib/api/generated/` deleted. `next lint` was removed in Next 16
-— CI calls `eslint` directly.
-`.githooks/pre-commit` is opt-in per clone (`git config core.hooksPath .githooks`) and is
-change-scoped: staged `backend/` paths run `ruff format --check`/`ruff check`/`pytest
-tests/unit`; staged `frontend/` paths run `format`/`lint`/`test:fast`; an untouched stack is
-skipped. It deliberately excludes mypy, DB-backed integration tests, `typecheck`, and `build` —
-those run in CI only.
+`typecheck`/`test`/`build` run `generate:api` first; `lint` does not. `.githooks/pre-commit` is
+opt-in per clone (`git config core.hooksPath .githooks`) and change-scoped; mypy, DB-backed tests,
+`typecheck` and `build` run in CI only. Harness hooks: `.claude/settings.json` and
+`.codex/hooks.json` both run the scripts in `.agents/hooks/` (Codex requires project trust and
+`/hooks` approval per clone).
 
-## Adding things — mechanical recipes
+## Adding things
 
-**Backend endpoint** (existing entity): add a handler in `app/routers/<x>.py` using the existing
-`XServiceDep`; wire an auth dependency (`RequireAdmin` / `SelfOrAdmin` / `CurrentUser`) as an
-explicit parameter; return `SuccessResponse[T]` (single item) or `PaginatedResponse[T]` (list).
-Reference: `app/routers/users.py`.
-**Backend entity + migration**: model in `app/models/<x>.py` (import it in `app/models/__init__.py`) -> repository
-`app/repositories/<x>.py` (session ctor, `.flush()` only) -> service `app/services/<x>.py` (transaction boundary via
-`transaction()`) -> router + Pydantic schemas -> `app/dependencies/<x>.py` (`get_<x>_service`/`XServiceDep`,
-re-exported from `app/dependencies/__init__.py`) -> `tests/unit/architecture/test_<x>_boundaries.py` (model on
-`test_user_boundaries.py`) -> `uv run python -m app.commands.create_migration -m "add <x>"` -> `uv run alembic upgrade
-head` -> `uv run alembic check`. Reference vertical: `app/{models,repositories,services,routers,schemas}/user*.py`.
-**Frontend feature**: create `src/features/<f>/{model,api,hooks,containers,components,server}`. `model` =
-types/zod/pure functions only. `api` = TanStack Query hooks over the orval-generated client plus a mapper that unwraps
-the envelope and converts `snake_case` (see `features/users/api/user-mapper.ts`). `server` = an RSC fetch helper for
-the initial page load (see `features/users/server/fetch-users-page.ts`). `components` = props-only views, no `'use
-client'`. `containers` = the client boundary, hooks, mutations. Wire a route under `src/app/(app)/<f>/`.
-**Frontend form**: zod schema in `features/<f>/model`; `useForm<z.input<S>, unknown,
-z.output<S>>` + `zodResolver` (the two-type-param form is mandatory under strict TS or
-`handleSubmit` mistypes); submit through `useMutation`, not a raw `<form action>` — React 19
-Actions are reserved for setting/clearing the httpOnly session cookie only (login/logout).
-Reference: `features/users/containers/create-user-form.tsx`.
+- **Backend CRUD or frontend feature:** run the `scaffold-crud` skill. It plans the artifact list,
+  waits for approval, generates the whole slice from rule-compliant templates
+  (`.agents/scaffold/`), then runs migration, OpenAPI export and client regeneration. Domain logic
+  is the only hand-written part. Reference vertical: `app/**/user*.py`, `features/users/`.
+- **Anything else:** the matching rule file is the recipe; `docs/architecture/*.md` holds the why.
 
 ## Work comes from issues, context comes from PRDs
-
-Two artefacts, two jobs. Confusing them is the most common way this repo gets misused.
 
 | | PRD (`docs/prds/<NNNN>-<slug>.md`) | Issue (GitHub) |
 |---|---|---|
 | Answers | why, and what "done" means for a capability | what to build next, as one mergeable change |
-| Lifetime | lives as long as the capability | closes when the PR merges |
-| Lives in | the repo, versioned, reviewed as a diff | the tracker |
-| Read by | every agent, by construction — it is a file in the worktree | `/task` at intake, via `gh` |
+| Lifetime / lives in | as long as the capability; the repo, reviewed as a diff | until the PR merges; the tracker |
 
-An issue without a PRD is fine for a bug or a chore. A feature whose reasoning exists only in an
-issue thread is not: an agent working in a detached worktree cannot see that thread, and it will
-rediscover, or invent, the reasoning you already did.
+An issue without a PRD is fine for a bug or a chore; a feature whose reasoning exists only in an
+issue thread is not — a detached worktree cannot see that thread. `groom` writes the PRD and spawns
+the issues; `task` consumes one issue. Both agree on the issue-body headings rendered by
+`.github/ISSUE_TEMPLATE/*.yml` (`What is it`, `Specs`, `Pre-exploration`, `Acceptance criteria`,
+`Out of scope`, `Related documents`, `Area`), enforced by
+`backend/tests/unit/architecture/test_repo_contracts.py`. `Pre-exploration` is a head start, never
+evidence: verify every path it hands you. Branch names, commit format, Definition of Done and labels
+live in `CONTRIBUTING.md`.
 
-`/groom` writes the PRD and spawns the issues from its `Work breakdown` table. `/task` consumes
-one issue. The round trip only works because both ends agree on the issue body headings that
-`.github/ISSUE_TEMPLATE/*.yml` renders — `What is it`, `Specs`, `Pre-exploration`,
-`Acceptance criteria`, `Out of scope`, `Related documents`, `Area`. Those strings are a contract,
-enforced by `backend/tests/unit/architecture/test_repo_contracts.py`. Rename a field in a form and
-that test fails until the parser and `/groom` agree again.
+## Skills and agents — one tree, two harnesses
 
-`Pre-exploration` is a head start, never evidence. It was true when it was written. Verify every
-path and claim it hands you before you rely on it; a stale pre-exploration section is the most
-likely way this pipeline produces a confidently wrong change.
-
-Contribution standards — branch names, commit format, Definition of Done, the label taxonomy —
-live in [`CONTRIBUTING.md`](./CONTRIBUTING.md) and apply to agents exactly as they do to humans.
-
-## Skills and agents
+Everything is maintained once under `.agents/`. Claude Code reaches it through the `.claude/rules`
+and `.claude/skills` symlinks and thin `.claude/agents/*.md` frontmatter files; Codex reads
+`.agents/skills/` natively and `.codex/agents/*.toml` point at the same rubric bodies. Skill and
+agent bodies are tool-neutral, with a closing `## Harness notes` for the differences.
 
 | Path | Purpose |
 |---|---|
-| `.claude/skills/groom/SKILL.md` | `/groom <idea>` — turns a product idea into a reviewed PRD under `docs/prds/` and the GitHub issues `/task` executes. The only skill that creates issues. |
-| `.claude/skills/task/SKILL.md` | `/task #123 \| <description> [--gate=manual\|auto]` — two-gate pipeline (plan/implement/review, then isolated QA) from a worktree to a ready-for-review PR. |
-| `.claude/skills/orchestrate/SKILL.md` | `/orchestrate --label <l> \| <items>` — runs an eligible backlog of `/task` items concurrently with a bounded worker pool and per-task isolation. |
-| `.claude/agents/backend-reviewer.md` | Reviews a backend diff/branch against the layering, migration, DI, auth, and error-contract rules above; runs ruff/mypy/alembic/pytest as evidence. |
-| `.claude/agents/frontend-reviewer.md` | Reviews a frontend diff/branch against import boundaries, server/client rules, auth, and forms; runs lint/typecheck/format/test/build. |
-| `.claude/agents/uncle-bob.md` | Clean-code review — naming, function size, duplication, and enforcement of the no-comments rule — across both stacks. |
+| `.agents/skills/groom/` | `groom <idea>` — idea → reviewed PRD → issues. The only skill that creates issues. |
+| `.agents/skills/task/` | `task #123 \| <description> [--gate=manual\|auto]` — two-gate pipeline (plan/implement/review, then isolated QA) to a ready PR. |
+| `.agents/skills/orchestrate/` | `orchestrate --label <l> \| <items>` — runs a backlog of `task` items concurrently with isolation. |
+| `.agents/skills/scaffold-crud/` | generates a rule-compliant backend slice and/or frontend feature behind an approved artifact list. |
+| `.agents/skills/verify-rules/` | plants known violations and reports which gate caught each; run after touching lint or architecture tests. |
+| `.agents/skills/fastapi/`, `.agents/skills/react-best-practices/` | vendored upstream skills (FastAPI's, from the installed package; Vercel's). Repo rules win on conflict. |
+| `.agents/agents/{backend,frontend}-reviewer.md`, `uncle-bob.md` | read-only review rubrics (architecture per side; clean code across both). |
 
-Codex discovers the matching `$groom`, `$task`, and `$orchestrate` skills under
-`.agents/skills/`, and the three reviewer agents under `.codex/agents/`. Their
-short adapters point to the maintained workflow contracts and review rubrics
-above, while translating Claude-specific tool and model instructions. Keep
-project rules here in `AGENTS.md`; keep review criteria in the existing
-`.claude/agents/` files. When a shared workflow contract changes, update its
-Codex adapter if needed and run the agent contract tests. Keep provider-specific
-invocation and tooling in its own entry point. `CLAUDE.md` remains a one-line
-pointer to this file.
+Invocation: `/name` in Claude Code, `$name` in Codex. Codex loads nested `AGENTS.md` only for the
+directory it was launched in, so start it at the repo root.
 
-## `next dev` will generate its own AGENTS.md/CLAUDE.md inside `frontend/`
+## `next dev` generates `frontend/AGENTS.md`'s managed block
 
-Next.js 16.3+ writes `frontend/AGENTS.md` and `frontend/CLAUDE.md` (`@AGENTS.md`) the first time
-`next dev` runs, and owns everything between `<!-- BEGIN:nextjs-agent-rules -->` and
-`<!-- END:nextjs-agent-rules -->` in that file — it will rewrite that block on every `next dev`
-start. **This root `AGENTS.md` is the canonical one for the whole repo** and is untouched by that
-mechanism; never move rules from here into `frontend/AGENTS.md`'s managed block.
+Next.js 16.3+ writes `frontend/CLAUDE.md` (`@AGENTS.md`) and owns everything between
+`<!-- BEGIN:nextjs-agent-rules -->` and `<!-- END:nextjs-agent-rules -->` in `frontend/AGENTS.md`,
+rewriting that block on every `next dev` start. Our content sits outside the block; never move
+repo rules into it. This root file is canonical for the whole repo.

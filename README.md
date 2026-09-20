@@ -95,19 +95,21 @@ context Alembic setup, and the enforcement mechanisms themselves:
 - [`docs/development/backend.md`](./docs/development/backend.md) — PR checklist
 - [`docs/development/frontend.md`](./docs/development/frontend.md) — PR checklist
 
-Agent-facing rules (the things an agent would get wrong without being told — exact versions,
-layering rules, auth gotchas, exact commands) live in [`AGENTS.md`](./AGENTS.md), which is the
-canonical doc for both Claude Code (`CLAUDE.md` is a one-line pointer to it) and any other coding
-agent.
+Agent-facing rules live in two places: [`AGENTS.md`](./AGENTS.md) holds what every session needs
+(exact versions, commands, env vars, the always-on rules and a Rules index), and
+[`.agents/rules/`](./.agents/rules/) holds path-scoped rules that load only when matching files are
+touched. Every `CLAUDE.md` is a one-line `@AGENTS.md` pointer, so both Claude Code and Codex read
+the same text.
 
 ## Agent tooling
 
-This template ships a small pipeline for agent-driven development. Claude discovers
-skills under `.claude/skills/` with `/name` commands; Codex discovers corresponding
-skills under `.agents/skills/` with `$name` commands. Codex reviewer agents live in
-`.codex/agents/` and read the maintained rubrics in `.claude/agents/`. Ask Codex
-to delegate a review to `backend-reviewer`, `frontend-reviewer`, or `uncle-bob`
-by name.
+This template ships a small pipeline for agent-driven development, maintained once under
+`.agents/`: path-scoped rules in `.agents/rules/`, skills in `.agents/skills/`, reviewer rubrics in
+`.agents/agents/`, hook scripts in `.agents/hooks/` and scaffold generators in `.agents/scaffold/`.
+Claude Code reaches them through the `.claude/rules` and `.claude/skills` symlinks and thin
+`.claude/agents/*.md` files (`/name` commands); Codex reads `.agents/skills/` natively (`$name`
+commands) and its `.codex/agents/*.toml` point at the same rubrics. Ask either harness to delegate a
+review to `backend-reviewer`, `frontend-reviewer`, or `uncle-bob` by name.
 
 | Claude / Codex | Purpose |
 |---|---|
