@@ -1,0 +1,32 @@
+import { useState } from "react";
+import {
+  DEFAULT_{{ENTITY}}_FILTERS,
+  withPage,
+} from "@/features/{{feature}}/model/{{entity-file}}-filters";
+import type { {{Entity}}Filters } from "@/features/{{feature}}/model/{{entity-file}}-filters";
+
+export interface {{Entities}}FiltersController {
+  filters: {{Entity}}Filters;
+  goToPage: (page: number) => void;
+  canGoToPreviousPage: boolean;
+  canGoToNextPage: (totalPages: number) => boolean;
+}
+
+/**
+ * Holds the {{feature-words}} list's pagination state and derives the
+ * previous/next guards from it. The clamping rule itself lives in `model/`.
+ */
+export function use{{Entities}}Filters(
+  initial: {{Entity}}Filters = DEFAULT_{{ENTITY}}_FILTERS,
+): {{Entities}}FiltersController {
+  const [filters, setFilters] = useState<{{Entity}}Filters>(initial);
+
+  return {
+    filters,
+    goToPage: (page: number) => {
+      setFilters((current) => withPage(current, page));
+    },
+    canGoToPreviousPage: filters.page > 1,
+    canGoToNextPage: (totalPages: number) => filters.page < totalPages,
+  };
+}

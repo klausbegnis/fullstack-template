@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+from datetime import datetime
+import uuid
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class {{Entity}}Create(BaseModel):
+    """Request body accepted when creating a {{entity}}."""
+
+{{schema_create_fields}}
+
+
+class {{Entity}}Update(BaseModel):
+    """Request body accepted when partially updating a {{entity}}."""
+
+{{schema_update_fields}}
+
+
+class {{Entity}}Read(BaseModel):
+    """Public API representation of a {{entity}}."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+{{schema_read_fields}}
+    created_at: datetime
+    updated_at: datetime
+
+
+class {{Entity}}ListFilters(BaseModel):
+    """Page-based pagination parameters for the {{entities}} listing endpoint."""
+
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=20, ge=1, le=100)
+
+    @property
+    def offset(self) -> int:
+        """Return the row offset the requested page starts at."""
+        return (self.page - 1) * self.page_size
+
+
+__all__ = [
+    "{{Entity}}Create",
+    "{{Entity}}ListFilters",
+    "{{Entity}}Read",
+    "{{Entity}}Update",
+]

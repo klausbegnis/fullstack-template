@@ -1,0 +1,21 @@
+import { describe, expect, it } from "vitest";
+import {
+  DEFAULT_{{ENTITY}}_FILTERS,
+  withPage,
+} from "@/features/{{feature}}/model/{{entity-file}}-filters";
+
+describe("withPage", () => {
+  it("moves to the requested page", () => {
+    expect(withPage(DEFAULT_{{ENTITY}}_FILTERS, 3).page).toBe(3);
+  });
+
+  it("never goes below the first page", () => {
+    expect(withPage(DEFAULT_{{ENTITY}}_FILTERS, 0).page).toBe(1);
+  });
+
+  it("leaves the page size untouched", () => {
+    expect(withPage(DEFAULT_{{ENTITY}}_FILTERS, 2).pageSize).toBe(
+      DEFAULT_{{ENTITY}}_FILTERS.pageSize,
+    );
+  });
+});

@@ -1,0 +1,35 @@
+import { queryOptions } from "@tanstack/react-query";
+import { {{opList}}, {{opGet}} } from "{{generated_module}}";
+import { unwrapGenerated } from "@/lib/api/unwrap-generated";
+import { to{{Entity}}, to{{Entities}}Page } from "@/features/{{feature}}/api/{{entity-file}}-mapper";
+import type { {{ReadDto}} } from "@/lib/api/generated/model";
+import type { {{Entity}}Filters } from "@/features/{{feature}}/model/{{entity-file}}-filters";
+import type { {{Entity}}, {{Entities}}Page } from "@/features/{{feature}}/model/{{entity-file}}";
+
+async function fetch{{Entities}}Page(filters: {{Entity}}Filters): Promise<{{Entities}}Page> {
+  return to{{Entities}}Page(
+    await {{opList}}({ page: filters.page, page_size: filters.pageSize }),
+  );
+}
+
+async function fetch{{Entity}}Detail({{entity}}Id: string): Promise<{{Entity}}> {
+  return to{{Entity}}(unwrapGenerated<{{ReadDto}}>(await {{opGet}}({{entity}}Id)));
+}
+
+export const {{entity}}Queries = {
+  all: () => ["{{feature}}"] as const,
+  lists: () => [...{{entity}}Queries.all(), "list"] as const,
+  list: (filters: {{Entity}}Filters) =>
+    queryOptions({
+      queryKey: [...{{entity}}Queries.lists(), filters],
+      queryFn: () => fetch{{Entities}}Page(filters),
+      staleTime: 60_000,
+    }),
+  details: () => [...{{entity}}Queries.all(), "detail"] as const,
+  detail: ({{entity}}Id: string) =>
+    queryOptions({
+      queryKey: [...{{entity}}Queries.details(), {{entity}}Id],
+      queryFn: () => fetch{{Entity}}Detail({{entity}}Id),
+      staleTime: 60_000,
+    }),
+};

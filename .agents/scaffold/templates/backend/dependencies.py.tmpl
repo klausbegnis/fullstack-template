@@ -1,0 +1,22 @@
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import Depends
+
+from app.repositories.{{entities}} import {{Entity}}Repository
+from app.services.{{entities}} import {{Entity}}Service
+
+from .database import SessionDep
+
+
+def get_{{entity}}_service(session: SessionDep) -> {{Entity}}Service:
+    """Compose the {{entity}} service and its repository for one request."""
+    return {{Entity}}Service(
+        session=session, {{entities}}={{Entity}}Repository(session)
+    )
+
+
+{{Entity}}ServiceDep = Annotated[{{Entity}}Service, Depends(get_{{entity}}_service)]
+
+__all__ = ["{{Entity}}ServiceDep", "get_{{entity}}_service"]

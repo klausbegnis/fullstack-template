@@ -1,0 +1,30 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { {{entity}}Queries } from "@/features/{{feature}}/api/{{entity-file}}-queries";
+import { use{{Entities}}Filters } from "@/features/{{feature}}/hooks/use-{{feature}}-filters";
+import { {{Entities}}ListView } from "@/features/{{feature}}/components/{{feature}}-list-view";
+
+/**
+ * Wires the {{feature-words}} list query and its pagination state to the
+ * presentational view. Prefetched server-side by
+ * `app/(app)/{{feature}}/page.tsx`, then read here through `useQuery` for
+ * client-driven pagination.
+ */
+export function {{Entities}}ListPage() {
+  const { filters, goToPage, canGoToPreviousPage, canGoToNextPage } = use{{Entities}}Filters();
+  const { data, isPending, isError } = useQuery({{entity}}Queries.list(filters));
+
+  return (
+    <{{Entities}}ListView
+      {{feature-camel}}={data?.items ?? []}
+      status={isError ? "error" : isPending ? "loading" : "ready"}
+      page={filters.page}
+      totalPages={data?.totalPages ?? 1}
+      canGoToPreviousPage={canGoToPreviousPage}
+      canGoToNextPage={canGoToNextPage(data?.totalPages ?? 1)}
+      onPreviousPage={() => goToPage(filters.page - 1)}
+      onNextPage={() => goToPage(filters.page + 1)}
+    />
+  );
+}

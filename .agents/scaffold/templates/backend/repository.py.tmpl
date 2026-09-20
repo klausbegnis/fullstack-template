@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+import uuid
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.{{entity}} import {{Entity}}
+
+
+class {{Entity}}Repository:
+    """Persist {{entities}} through one request-scoped database session."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get(self, {{entity}}_id: uuid.UUID) -> {{Entity}} | None:
+        return await self._session.get({{Entity}}, {{entity}}_id)
+
+    async def get_for_update(self, {{entity}}_id: uuid.UUID) -> {{Entity}} | None:
+        result: {{Entity}} | None = await self._session.scalar(
+            select({{Entity}}).where({{Entity}}.id == {{entity}}_id).with_for_update()
+        )
+        return result
+
+    async def list(self, *, offset: int, limit: int) -> tuple[list[{{Entity}}], int]:
+        total = await self._session.scalar(select(func.count()).select_from({{Entity}}))
+        rows = await self._session.scalars(
+            select({{Entity}})
+            .order_by({{Entity}}.created_at, {{Entity}}.id)
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(rows.all()), total or 0
+
+    async def create(self, *, {{repository_create_params}}) -> {{Entity}}:
+        record = {{Entity}}({{repository_create_kwargs}})
+        self._session.add(record)
+        await self._session.flush()
+        return record
+
+    async def update(
+        self,
+        record: {{Entity}},
+        *,
+{{repository_update_params}}
+    ) -> {{Entity}}:
+{{repository_update_assignments}}
+        record.updated_at = datetime.now(UTC)
+        await self._session.flush()
+        return record

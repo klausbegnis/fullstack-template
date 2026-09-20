@@ -1,0 +1,30 @@
+import type { {{PageDto}}, {{ReadDto}} } from "@/lib/api/generated/model";
+import type { {{Entity}}, {{Entities}}Page } from "@/features/{{feature}}/model/{{entity-file}}";
+
+/**
+ * Maps the FastAPI representation of a {{entity-words}} to the domain
+ * `{{Entity}}`. Together with `to{{Entities}}Page` this is the only place
+ * `snake_case` field names appear.
+ */
+export function to{{Entity}}(dto: {{ReadDto}}): {{Entity}} {
+  return {
+    id: dto.id,
+{{mapper_fields}}
+    createdAt: new Date(dto.created_at),
+    updatedAt: new Date(dto.updated_at),
+  };
+}
+
+/**
+ * Unwraps the backend's paginated envelope into the domain page shape the
+ * container and the RSC prefetch helper both read.
+ */
+export function to{{Entities}}Page(response: {{PageDto}}): {{Entities}}Page {
+  return {
+    items: response.data.map(to{{Entity}}),
+    total: response.total,
+    page: response.page,
+    pageSize: response.page_size,
+    totalPages: response.total_pages,
+  };
+}
