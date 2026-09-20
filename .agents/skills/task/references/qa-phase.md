@@ -58,9 +58,9 @@ Throughout, `$SLUG`, `$WT` (worktree) and `$PR` come from the handoff file.
 developer's own stack.
 **Do.**
 ```
-python3 .claude/skills/task/task_env.py up --task "$SLUG" --worktree "$WT" \
+python3 "$(git rev-parse --show-toplevel)"/.agents/skills/task/scripts/task_env.py up --task "$SLUG" --worktree "$WT" \
   --services <from Q0> --build
-eval "$(python3 .claude/skills/task/task_env.py env --task "$SLUG" --export)"
+eval "$(python3 "$(git rev-parse --show-toplevel)"/.agents/skills/task/scripts/task_env.py env --task "$SLUG" --export)"
 ```
 `--build` is mandatory here and after every Q7 fix: the images are built from the worktree
 and are stale otherwise. `up` waits for healthchecks; the `api` entrypoint runs
@@ -76,7 +76,7 @@ against a half-started stack.
 ```
 curl -fsS "$API_BASE_URL/health"
 curl -fsS -o /dev/null -w '%{http_code}\n' "$FRONTEND_BASE_URL"
-python3 .claude/skills/task/task_env.py logs --task "$SLUG" -n 100
+python3 "$(git rev-parse --show-toplevel)"/.agents/skills/task/scripts/task_env.py logs --task "$SLUG" -n 100
 ```
 Run the frontend line only when the frontend is in scope. Expect `/health` to return the
 `SuccessResponse` envelope, the frontend to return 200, and the logs to contain no
@@ -183,7 +183,7 @@ outside the diff (pre-existing defect, infrastructure). Do not silently widen th
    ```
    The report is a markdown table `case | expected | actual | evidence`, plus the iteration
    count and a one-line list of anything you changed in Q7.
-3. **Teardown:** `python3 .claude/skills/task/task_env.py down --task "$SLUG"`.
+3. **Teardown:** `python3 "$(git rev-parse --show-toplevel)"/.agents/skills/task/scripts/task_env.py down --task "$SLUG"`.
 4. Return the result block, and nothing else.
 
 Do not flip the PR out of draft, do not edit the PR body, do not delete the task file, do
