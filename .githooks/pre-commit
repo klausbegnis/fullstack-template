@@ -12,7 +12,7 @@ fi
 
 backend_changed=$(printf '%s\n' "$staged" | grep -c '^backend/' || true)
 frontend_changed=$(printf '%s\n' "$staged" | grep -c '^frontend/' || true)
-harness_changed=$(printf '%s\n' "$staged" | grep -cE '^(\.github|\.claude|docs/prds|scripts)/' || true)
+harness_changed=$(printf '%s\n' "$staged" | grep -cE '^(\.github|\.githooks|\.claude|\.agents|\.codex|docs/prds|scripts)/' || true)
 
 if [ "$backend_changed" -gt 0 ]; then
   echo "pre-commit: backend"

@@ -9,6 +9,7 @@ failure, so they live with the architecture tests rather than in a linter.
 
 from pathlib import Path
 import re
+import tomllib
 
 import pytest
 import yaml
@@ -311,3 +312,47 @@ def test_task_skill_refuses_the_one_form_it_cannot_execute() -> None:
         f"A support ticket is a question, not a change: /task must refuse it "
         f"rather than plan an implementation for it."
     )
+
+
+CODEX_SKILLS = ("groom", "task", "orchestrate")
+CODEX_REVIEWERS = ("backend-reviewer", "frontend-reviewer", "uncle-bob")
+
+
+def test_agents_md_is_the_shared_project_guide() -> None:
+    assert (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8").strip() == (
+        "@AGENTS.md"
+    )
+
+
+@pytest.mark.parametrize("name", CODEX_SKILLS)
+def test_codex_skill_points_to_maintained_workflow(name: str) -> None:
+    path = REPO_ROOT / ".agents" / "skills" / name / "SKILL.md"
+    assert path.is_file(), f"Codex cannot discover {name}: {path} is missing"
+
+    contents = path.read_text(encoding="utf-8")
+    match = re.match(r"\A---\n(.*?)\n---\n", contents, re.DOTALL)
+    assert match, f"{path} lacks YAML frontmatter"
+    metadata = yaml.safe_load(match.group(1))
+    assert metadata["name"] == name
+    assert metadata["description"].strip()
+    assert "git rev-parse --show-toplevel" in contents
+    assert (REPO_ROOT / ".claude" / "skills" / name / "SKILL.md").is_file()
+    assert f".claude/skills/{name}/SKILL.md" in contents
+    assert "AGENTS.md" in contents
+
+
+@pytest.mark.parametrize("name", CODEX_REVIEWERS)
+def test_codex_reviewer_uses_maintained_rubric(name: str) -> None:
+    path = REPO_ROOT / ".codex" / "agents" / f"{name}.toml"
+    assert path.is_file(), f"Codex cannot discover {name}: {path} is missing"
+
+    config = tomllib.loads(path.read_text(encoding="utf-8"))
+    assert config["name"] == name
+    assert config["description"].strip()
+    assert config["sandbox_mode"] == "read-only"
+    instructions = config["developer_instructions"]
+    assert "git rev-parse --show-toplevel" in instructions
+    assert "AGENTS.md" in instructions
+    assert f".claude/agents/{name}.md" in instructions
+    assert "Do not edit files or commit" in instructions
+    assert (REPO_ROOT / ".claude" / "agents" / f"{name}.md").is_file()
