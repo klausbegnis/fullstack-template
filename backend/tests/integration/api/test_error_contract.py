@@ -4,7 +4,6 @@ from fastapi import APIRouter
 from fastapi.testclient import TestClient
 from httpx import Response
 from pydantic import BaseModel, Field
-import pytest
 
 from app.core import (
     REQUEST_ID_HEADER,
@@ -65,7 +64,6 @@ def _pop_verified_request_id(response: Response, body: dict[str, Any]) -> str:
     return request_id
 
 
-@pytest.mark.integration
 def test_validation_error_contract(error_client: TestClient) -> None:
     response = error_client.post(
         "/__test/error-contract/validation", json={"name": "x"}
@@ -91,7 +89,6 @@ def test_validation_error_contract(error_client: TestClient) -> None:
     }
 
 
-@pytest.mark.integration
 def test_not_found_error_contract(error_client: TestClient) -> None:
     response = error_client.get("/__test/error-contract/not-found")
 
@@ -101,7 +98,6 @@ def test_not_found_error_contract(error_client: TestClient) -> None:
     assert body == {"error": {"code": "not_found", "message": "Resource not found"}}
 
 
-@pytest.mark.integration
 def test_conflict_error_contract(error_client: TestClient) -> None:
     response = error_client.get("/__test/error-contract/conflict")
 
@@ -116,7 +112,6 @@ def test_conflict_error_contract(error_client: TestClient) -> None:
     }
 
 
-@pytest.mark.integration
 def test_unauthorized_error_contract(error_client: TestClient) -> None:
     response = error_client.get("/__test/error-contract/unauthorized")
 
@@ -128,7 +123,6 @@ def test_unauthorized_error_contract(error_client: TestClient) -> None:
     }
 
 
-@pytest.mark.integration
 def test_forbidden_error_contract(error_client: TestClient) -> None:
     response = error_client.get("/__test/error-contract/forbidden")
 
@@ -138,7 +132,6 @@ def test_forbidden_error_contract(error_client: TestClient) -> None:
     assert body == {"error": {"code": "forbidden", "message": "Access forbidden"}}
 
 
-@pytest.mark.integration
 def test_unexpected_error_contract_does_not_leak_exception(
     error_client: TestClient,
 ) -> None:
@@ -157,7 +150,6 @@ def test_unexpected_error_contract_does_not_leak_exception(
     assert "traceback" not in response.text.lower()
 
 
-@pytest.mark.integration
 def test_error_contract_generates_request_id_when_not_supplied(
     error_client: TestClient,
 ) -> None:
@@ -167,7 +159,6 @@ def test_error_contract_generates_request_id_when_not_supplied(
     assert len(request_id) == 36
 
 
-@pytest.mark.integration
 def test_error_contract_echoes_inbound_request_id(error_client: TestClient) -> None:
     response = error_client.get(
         "/__test/error-contract/not-found",

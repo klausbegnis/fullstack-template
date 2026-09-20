@@ -85,7 +85,7 @@ app.include_router(users_router, responses=ERROR_RESPONSES)
 
 
 @app.get("/")
-def read_root() -> dict[str, str]:
+async def read_root() -> dict[str, str]:
     """Return basic application metadata."""
     return {
         "app": settings.APP_NAME,

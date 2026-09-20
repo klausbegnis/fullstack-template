@@ -19,14 +19,6 @@ from app.models.auth_session import AuthSession
 from app.models.user import User, UserRole
 from app.repositories.users import UserRepository
 
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(
-        not __import__("os").getenv("DATABASE_URL"),
-        reason="PostgreSQL DATABASE_URL is not configured",
-    ),
-]
-
 
 @pytest.fixture
 def auth_client() -> TestClient:

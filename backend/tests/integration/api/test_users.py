@@ -18,14 +18,6 @@ from app.main import app
 from app.models.user import User, UserRole
 from app.repositories.users import UserRepository
 
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(
-        not os.getenv("DATABASE_URL"),
-        reason="PostgreSQL DATABASE_URL is not configured",
-    ),
-]
-
 
 @pytest.fixture
 def users_client() -> TestClient:

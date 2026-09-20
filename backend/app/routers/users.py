@@ -13,7 +13,7 @@ from app.schemas.api.users import UserCreate, UserListFilters, UserRead, UserUpd
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("", response_model=PaginatedResponse[UserRead])
+@router.get("")
 async def list_users(
     _actor: RequireAdmin,
     service: UserServiceDep,
@@ -30,7 +30,7 @@ async def list_users(
     )
 
 
-@router.get("/{user_id}", response_model=SuccessResponse[UserRead])
+@router.get("/{user_id}")
 async def get_user(
     user_id: uuid.UUID,
     _actor: SelfOrAdmin,
@@ -40,9 +40,7 @@ async def get_user(
     return SuccessResponse(data=data)
 
 
-@router.post(
-    "", response_model=SuccessResponse[UserRead], status_code=status.HTTP_201_CREATED
-)
+@router.post("", status_code=status.HTTP_201_CREATED)
 async def create_user(
     payload: UserCreate,
     _actor: RequireAdmin,
@@ -52,7 +50,7 @@ async def create_user(
     return SuccessResponse(message="User created", data=data)
 
 
-@router.patch("/{user_id}", response_model=SuccessResponse[UserRead])
+@router.patch("/{user_id}")
 async def update_user(
     user_id: uuid.UUID,
     payload: UserUpdate,

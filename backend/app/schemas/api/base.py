@@ -36,7 +36,7 @@ class PaginatedResponse(BaseModel, Generic[T]):  # noqa: UP046
 
     success: bool = True
     data: list[T]
-    total: int = Field(..., description="Total number of items")
-    page: int = Field(..., ge=1, description="Current page number")
-    page_size: int = Field(..., ge=1, description="Items per page")
-    total_pages: int = Field(..., ge=0, description="Total number of pages")
+    total: int = Field(description="Total number of items")
+    page: int = Field(ge=1, description="Current page number")
+    page_size: int = Field(ge=1, description="Items per page")
+    total_pages: int = Field(ge=0, description="Total number of pages")

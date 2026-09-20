@@ -27,6 +27,7 @@ from app.services.auth import (
     check_origin,
     split_refresh,
 )
+from tests.support.fakes import FakeSession
 
 
 def test_argon2_passwords_and_rehash_contract() -> None:
@@ -89,43 +90,6 @@ def test_auth_user_contract_has_no_tenant_concept() -> None:
     output = to_auth_user(user)
     assert output.role is UserRole.ADMIN
     assert output.name == "Admin"
-
-
-class _FakeTransaction:
-    def __init__(self, session: _FakeSession) -> None:
-        self._session = session
-
-    async def __aenter__(self) -> _FakeSession:
-        self._session._in_transaction = True
-        return self._session
-
-    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> bool:
-        if exc_type is None:
-            await self._session.commit()
-        else:
-            await self._session.rollback()
-        return False
-
-
-class _FakeSession:
-    def __init__(self) -> None:
-        self.commits = 0
-        self.rollbacks = 0
-        self._in_transaction = False
-
-    def in_transaction(self) -> bool:
-        return self._in_transaction
-
-    def begin(self) -> _FakeTransaction:
-        return _FakeTransaction(self)
-
-    async def commit(self) -> None:
-        self.commits += 1
-        self._in_transaction = False
-
-    async def rollback(self) -> None:
-        self.rollbacks += 1
-        self._in_transaction = False
 
 
 class _FakeUsers:
@@ -192,9 +156,7 @@ class _FakeAuthSessions:
         self.revocation_reason = reason
 
 
-def _service_fixture() -> tuple[
-    AuthService, _FakeSession, _FakeAuthSessions, User, str
-]:
+def _service_fixture() -> tuple[AuthService, FakeSession, _FakeAuthSessions, User, str]:
     password = "Correct horse battery staple 123!"
     user = User(
         id=uuid.uuid4(),
@@ -203,7 +165,7 @@ def _service_fixture() -> tuple[
         password_hash=hash_password(password),
         role=UserRole.ADMIN,
     )
-    session = _FakeSession()
+    session = FakeSession()
     auth_sessions = _FakeAuthSessions(user)
     service = AuthService(
         session=session,  # type: ignore[arg-type]

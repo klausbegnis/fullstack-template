@@ -10,14 +10,6 @@ from app.config import Settings
 from app.core.database import create_engine
 from app.models.db_schemas import DOMAIN_SCHEMAS, INFRA_SCHEMA
 
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(
-        not os.getenv("DATABASE_URL"),
-        reason="PostgreSQL DATABASE_URL is not configured",
-    ),
-]
-
 
 def test_persistence_namespaces_and_version_table_exist() -> None:
     asyncio.run(_inspect_namespaces())

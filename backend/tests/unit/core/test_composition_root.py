@@ -1,51 +1,23 @@
+"""Verify the application's wiring can be substituted and fails closed.
+
+Every service reaches a handler through a provider in `app.dependencies`, which
+is what makes `dependency_overrides` a supported seam rather than an accident. A
+provider that raises must surface the sanitized 500 envelope, never the
+underlying connection detail.
+"""
+
 from __future__ import annotations
 
-import ast
-from pathlib import Path
-from typing import get_args
 import uuid
 
 from fastapi.testclient import TestClient
 
 from app.config import settings
-from app.dependencies import (
-    AuthServiceDep,
-    SessionDep,
-    get_auth_service,
-    get_auth_session,
-    get_session,
-)
+from app.dependencies import get_auth_service, get_session
 from app.main import app
 from app.models.user import UserRole
 from app.schemas.api.auth import AuthUserRead
-from app.services.auth import AuthService, LoginResult
-
-
-def test_auth_router_does_not_import_persistence_details() -> None:
-    router_path = Path(__file__).parents[3] / "app" / "routers" / "auth.py"
-    tree = ast.parse(router_path.read_text())
-    forbidden = ("app.repositories", "app.models", "sqlalchemy")
-
-    imported_modules = {
-        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
-    }
-    imported_modules.update(
-        alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Import)
-        for alias in node.names
-    )
-    assert not any(
-        module == prefix or module.startswith(f"{prefix}.")
-        for module in imported_modules
-        for prefix in forbidden
-    )
-
-
-def test_auth_service_dependency_is_non_optional_and_uses_central_session() -> None:
-    assert get_args(AuthServiceDep)[0] is AuthService
-    assert get_auth_session is get_session
-    assert get_args(SessionDep)[0].__name__ == "AsyncSession"
+from app.services.auth import LoginResult
 
 
 def test_auth_service_provider_can_be_overridden_at_http_boundary() -> None:

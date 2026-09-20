@@ -7,14 +7,6 @@ from sqlalchemy import text
 from app.config import Settings
 from app.core.database import create_engine, create_session_factory
 
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(
-        not os.getenv("DATABASE_URL"),
-        reason="PostgreSQL DATABASE_URL is not configured",
-    ),
-]
-
 
 def test_sessions_are_isolated_and_recover_after_rollback() -> None:
     asyncio.run(_exercise_sessions())

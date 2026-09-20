@@ -1,8 +1,6 @@
 from fastapi.testclient import TestClient
-import pytest
 
 
-@pytest.mark.integration
 def test_read_root(client: TestClient) -> None:
     response = client.get("/")
 
@@ -14,7 +12,6 @@ def test_read_root(client: TestClient) -> None:
     }
 
 
-@pytest.mark.integration
 def test_api_returns_json(client: TestClient) -> None:
     response = client.get("/")
 
