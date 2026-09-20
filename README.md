@@ -16,7 +16,7 @@ vertical (frontend) — see the recipes in [`AGENTS.md`](./AGENTS.md).
 |---|---|
 | Backend | FastAPI + SQLAlchemy 2.0 (async) + asyncpg + Alembic + PostgreSQL 16, Argon2id password hashing, JWT access tokens + rotating opaque refresh tokens, double-submit CSRF, RBAC (admin/member) |
 | Frontend | Next.js 16.3.5 (App Router, RSC-first) + React 19 + TypeScript (strict) + Tailwind CSS 4 + TanStack Query + react-hook-form/zod, an orval-generated API client |
-| Agent tooling | `.claude/skills/task`, `.claude/skills/orchestrate`, and three review agents — see below |
+| Agent tooling | Claude and Codex skills for grooming, delivery, and orchestration, plus three shared review rubrics — see below |
 
 ## Quickstart — Docker Compose
 
@@ -102,16 +102,27 @@ agent.
 
 ## Agent tooling
 
-This template ships a small pipeline for agent-driven development, under `.claude/`:
+This template ships a small pipeline for agent-driven development. Claude discovers
+skills under `.claude/skills/` with `/name` commands; Codex discovers corresponding
+skills under `.agents/skills/` with `$name` commands. Codex reviewer agents live in
+`.codex/agents/` and read the maintained rubrics in `.claude/agents/`.
 
-| | |
+| Claude / Codex | Purpose |
 |---|---|
-| `/groom <idea>` | Turns a product idea into a reviewed PRD under `docs/prds/` and the GitHub issues that implement it. The only skill that creates issues, and it will not create any without showing you the exact commands first. |
-| `/task #123` | Takes one issue from nothing to a ready-for-review PR in its own git worktree, through two hard gates: plan/implement/review, then executable QA against a real running stack. |
-| `/orchestrate --label backend` | Fans an eligible backlog out over concurrent `/task` runs with a bounded worker pool, dependency ordering, and per-task isolation. |
+| `/groom <idea>` / `$groom <idea>` | Turns a product idea into a reviewed PRD under `docs/prds/` and the GitHub issues that implement it. |
+| `/task #123` / `$task #123` | Takes one issue through a worktree, implementation, checks, review, QA, and a PR. |
+| `/orchestrate --label backend` / `$orchestrate --label backend` | Runs an eligible backlog with bounded concurrency, dependency ordering, and per-task isolation. |
 | `backend-reviewer` agent | Reviews a backend diff against the layering, migration, DI, auth, and error-contract rules, running the real checks as evidence. |
 | `frontend-reviewer` agent | Reviews a frontend diff against import boundaries, server/client rules, auth, and forms, running the real checks as evidence. |
 | `uncle-bob` agent | Clean-code/design review — naming, function size, duplication, and the no-comments rule — across both stacks. |
+
+`AGENTS.md` is the shared project guide, and `CLAUDE.md` points to it. The Claude
+workflow files hold the detailed repository contracts; Codex skills are short
+adapters for their host-specific commands. Review criteria stay in the Claude
+Markdown rubrics and are loaded by the Codex reviewer agents at review time.
+Update a shared rule in its maintained file, then check whether the small Codex
+adapter needs a matching change. Run the agent contract tests after either side
+changes.
 
 The loop is `idea -> PRD -> issues -> PRs`. A PRD in `docs/prds/` holds the reasoning and is
 reviewed as a diff like any other file; a GitHub issue holds one mergeable unit of work and closes

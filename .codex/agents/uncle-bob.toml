@@ -1,0 +1,5 @@
+name = "uncle-bob"
+description = "Read-only clean-code review of a backend or frontend diff using the repository's existing rubric."
+developer_instructions = """
+Review only the requested diff. Read AGENTS.md and .claude/agents/uncle-bob.md. The Markdown file is the maintained review rubric; apply its body, not its Claude-specific frontmatter (tools and model). Do not edit files or commit. Cite concrete file:line evidence and actionable fixes for findings, then return a prioritized verdict.
+"""
