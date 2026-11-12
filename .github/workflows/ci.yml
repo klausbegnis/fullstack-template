@@ -192,6 +192,9 @@ jobs:
       - name: Check formatting
         run: npm run format
 
+      - name: Test the custom lint rules
+        run: npm run test:lint-rules
+
       - name: Test
         run: npm run test
 
