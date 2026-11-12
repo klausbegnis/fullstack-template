@@ -8,7 +8,11 @@ import jwt
 import pytest
 
 from app.config import Settings
-from app.core.exceptions import ForbiddenException, UnauthorizedException
+from app.core.exceptions import (
+    ForbiddenException,
+    RefreshSupersededException,
+    UnauthorizedException,
+)
 from app.core.security import (
     constant_time_equal,
     create_access_token,
@@ -27,7 +31,7 @@ from app.services.auth import (
     check_origin,
     split_refresh,
 )
-from tests.support.fakes import FakeSession
+from tests.support.fakes import FakeSecurityEventRepository, FakeSession
 
 
 def test_argon2_passwords_and_rehash_contract() -> None:
@@ -45,7 +49,9 @@ def test_access_claims_are_complete_and_strictly_validated() -> None:
     claims = decode_access_token(token, config=config)
     assert {"sub", "sid", "jti", "iss", "aud", "iat", "nbf", "exp"} <= claims.keys()
     altered = jwt.encode(
-        {**claims, "aud": "other"}, config.AUTH_JWT_SECRET, algorithm="HS256"
+        {**claims, "aud": "other"},
+        config.AUTH_JWT_SECRET.get_secret_value(),
+        algorithm="HS256",
     )
     with pytest.raises(jwt.InvalidAudienceError):
         decode_access_token(altered, config=config)
@@ -109,14 +115,17 @@ class _FakeAuthSessions:
             id=uuid.uuid4(),
             user_id=user.id,
             csrf_token_hash=b"",
+            last_seen_at=datetime.now(UTC),
             expires_at=datetime.now(UTC) + timedelta(days=1),
         )
         self.refresh = AuthRefreshToken(
             id=uuid.uuid4(),
             session_id=self.auth_session.id,
             secret_hash=b"",
+            created_at=datetime.now(UTC),
             expires_at=self.auth_session.expires_at,
         )
+        self.issued: list[AuthRefreshToken] = []
         self.revocation_reason: str | None = None
 
     async def create(
@@ -134,16 +143,22 @@ class _FakeAuthSessions:
         secret_hash: bytes,
         expires_at: datetime,
     ) -> AuthRefreshToken:
-        self.refresh.session_id = auth_session.id
-        self.refresh.secret_hash = secret_hash
-        self.refresh.expires_at = expires_at
-        return self.refresh
+        token = AuthRefreshToken(
+            id=uuid.uuid4(),
+            session_id=auth_session.id,
+            secret_hash=secret_hash,
+            created_at=datetime.now(UTC),
+            expires_at=expires_at,
+        )
+        self.issued.append(token)
+        return token
 
     async def get_token(
         self, token_id: uuid.UUID, *, for_update: bool = False
     ) -> AuthRefreshToken | None:
         del for_update
-        return self.refresh if token_id == self.refresh.id else None
+        tokens = [self.refresh, *self.issued]
+        return next((token for token in tokens if token.id == token_id), None)
 
     async def get_by_id(
         self, session_id: uuid.UUID, *, for_update: bool = False
@@ -151,12 +166,36 @@ class _FakeAuthSessions:
         del for_update
         return self.auth_session if session_id == self.auth_session.id else None
 
+    async def get_active(
+        self, session_id: uuid.UUID, *, for_update: bool = False
+    ) -> AuthSession | None:
+        del for_update
+        if session_id != self.auth_session.id:
+            return None
+        if self.auth_session.revoked_at is not None:
+            return None
+        if self.auth_session.expires_at <= datetime.now(UTC):
+            return None
+        return self.auth_session
+
     async def revoke(self, auth_session: AuthSession, reason: str) -> None:
         auth_session.revoked_at = datetime.now(UTC)
         self.revocation_reason = reason
 
 
 def _service_fixture() -> tuple[AuthService, FakeSession, _FakeAuthSessions, User, str]:
+    service, session, auth_sessions, user, password, _ = _audited_fixture()
+    return service, session, auth_sessions, user, password
+
+
+def _audited_fixture() -> tuple[
+    AuthService,
+    FakeSession,
+    _FakeAuthSessions,
+    User,
+    str,
+    FakeSecurityEventRepository,
+]:
     password = "Correct horse battery staple 123!"
     user = User(
         id=uuid.uuid4(),
@@ -167,13 +206,15 @@ def _service_fixture() -> tuple[AuthService, FakeSession, _FakeAuthSessions, Use
     )
     session = FakeSession()
     auth_sessions = _FakeAuthSessions(user)
+    events = FakeSecurityEventRepository()
     service = AuthService(
         session=session,  # type: ignore[arg-type]
         users=_FakeUsers(user),  # type: ignore[arg-type]
         auth_sessions=auth_sessions,  # type: ignore[arg-type]
+        security_events=events,  # type: ignore[arg-type]
         config=Settings(TESTING=True),
     )
-    return service, session, auth_sessions, user, password
+    return service, session, auth_sessions, user, password, events
 
 
 def test_auth_service_login_owns_transaction_and_returns_cookie_values() -> None:
@@ -202,4 +243,283 @@ def test_logout_refresh_fallback_is_owned_by_auth_service() -> None:
     asyncio.run(service.logout(context))
 
     assert auth_sessions.revocation_reason == "logout"
+    assert session.commits == 1
+
+
+_IDLE = timedelta(days=14)
+
+
+def _refresh_context(
+    auth_sessions: _FakeAuthSessions, *, created_ago: timedelta, session_left: timedelta
+) -> AuthRequestContext:
+    now = datetime.now(UTC)
+    secret = new_secret()
+    csrf = new_secret()
+    auth_sessions.auth_session.csrf_token_hash = hash_secret(csrf)
+    auth_sessions.auth_session.expires_at = now + session_left
+    auth_sessions.auth_session.last_seen_at = now - created_ago
+    auth_sessions.refresh.secret_hash = hash_secret(secret)
+    auth_sessions.refresh.created_at = now - created_ago
+    auth_sessions.refresh.expires_at = now - created_ago + timedelta(days=30)
+    return AuthRequestContext(
+        origin="http://localhost:3000",
+        access_token=None,
+        refresh_token=f"{auth_sessions.refresh.id}.{secret}",
+        csrf_cookie=csrf,
+        csrf_header=csrf,
+    )
+
+
+def _assert_close(actual: datetime, expected: datetime) -> None:
+    assert abs(actual - expected) < timedelta(seconds=5)
+
+
+def test_refresh_rejects_a_token_idle_past_the_limit_without_revoking() -> None:
+    service, _, auth_sessions, _, _ = _service_fixture()
+    context = _refresh_context(
+        auth_sessions, created_ago=timedelta(days=15), session_left=timedelta(days=15)
+    )
+
+    with pytest.raises(UnauthorizedException):
+        asyncio.run(service.refresh(context))
+
+    assert auth_sessions.revocation_reason is None
+    assert auth_sessions.auth_session.revoked_at is None
+    assert auth_sessions.refresh.consumed_at is None
+    assert auth_sessions.issued == []
+
+
+def test_refresh_inside_the_idle_limit_caps_the_successor_at_the_idle_limit() -> None:
+    service, session, auth_sessions, _, _ = _service_fixture()
+    context = _refresh_context(
+        auth_sessions, created_ago=timedelta(days=13), session_left=timedelta(days=17)
+    )
+
+    result = asyncio.run(service.refresh(context))
+
+    now = datetime.now(UTC)
+    [successor] = auth_sessions.issued
+    assert result.refresh_token.startswith(f"{successor.id}.")
+    _assert_close(successor.expires_at, now + _IDLE)
+    _assert_close(auth_sessions.auth_session.last_seen_at, now)
+    assert auth_sessions.refresh.consumed_at is not None
+    assert session.commits == 1
+
+
+def test_refresh_successor_never_outlives_the_session_absolute_expiry() -> None:
+    service, _, auth_sessions, _, _ = _service_fixture()
+    context = _refresh_context(
+        auth_sessions, created_ago=timedelta(days=1), session_left=timedelta(days=1)
+    )
+
+    asyncio.run(service.refresh(context))
+
+    [successor] = auth_sessions.issued
+    assert successor.expires_at == auth_sessions.auth_session.expires_at
+
+
+def test_refresh_accepts_a_token_issued_before_the_idle_limit() -> None:
+    service, _, auth_sessions, _, _ = _service_fixture()
+    context = _refresh_context(
+        auth_sessions, created_ago=timedelta(days=2), session_left=timedelta(days=28)
+    )
+
+    result = asyncio.run(service.refresh(context))
+
+    assert result.refresh_token
+    assert auth_sessions.revocation_reason is None
+
+
+def test_login_caps_the_first_refresh_token_at_the_idle_limit() -> None:
+    service, _, auth_sessions, user, password = _service_fixture()
+
+    result = asyncio.run(service.login(user.email, password))
+
+    now = datetime.now(UTC)
+    [first] = auth_sessions.issued
+    _assert_close(auth_sessions.auth_session.expires_at, now + timedelta(days=30))
+    _assert_close(first.expires_at, now + _IDLE)
+    _assert_close(
+        result.access_expires_at,
+        now + timedelta(seconds=Settings(TESTING=True).AUTH_ACCESS_TTL_SECONDS),
+    )
+    assert result.session_expires_at == auth_sessions.auth_session.expires_at
+
+
+def test_current_user_accepts_a_session_used_inside_the_idle_limit() -> None:
+    service, _, auth_sessions, user, _ = _service_fixture()
+    auth_sessions.auth_session.last_seen_at = datetime.now(UTC) - timedelta(days=13)
+
+    resolved = asyncio.run(service.current_user(auth_sessions.auth_session.id, user.id))
+
+    assert resolved is user
+
+
+def test_current_user_rejects_a_session_idle_past_the_limit() -> None:
+    service, _, auth_sessions, user, _ = _service_fixture()
+    auth_sessions.auth_session.last_seen_at = datetime.now(UTC) - timedelta(days=15)
+
+    with pytest.raises(UnauthorizedException):
+        asyncio.run(service.current_user(auth_sessions.auth_session.id, user.id))
+
+
+def _rotate_and_age(
+    service: AuthService,
+    auth_sessions: _FakeAuthSessions,
+    context: AuthRequestContext,
+    *,
+    seconds: int,
+) -> None:
+    asyncio.run(service.refresh(context))
+    auth_sessions.refresh.consumed_at = datetime.now(UTC) - timedelta(seconds=seconds)
+
+
+def test_refresh_returns_the_access_and_session_expiry() -> None:
+    service, _, auth_sessions, _, _ = _service_fixture()
+    context = _refresh_context(
+        auth_sessions, created_ago=timedelta(days=1), session_left=timedelta(days=5)
+    )
+
+    result = asyncio.run(service.refresh(context))
+
+    _assert_close(
+        result.access_expires_at,
+        datetime.now(UTC)
+        + timedelta(seconds=Settings(TESTING=True).AUTH_ACCESS_TTL_SECONDS),
+    )
+    assert result.session_expires_at == auth_sessions.auth_session.expires_at
+
+
+def test_refresh_superseded_inside_the_grace_window_keeps_the_session() -> None:
+    service, _, auth_sessions, _, _ = _service_fixture()
+    context = _refresh_context(
+        auth_sessions, created_ago=timedelta(minutes=1), session_left=timedelta(days=5)
+    )
+    _rotate_and_age(service, auth_sessions, context, seconds=2)
+
+    with pytest.raises(RefreshSupersededException):
+        asyncio.run(service.refresh(context))
+
+    assert auth_sessions.revocation_reason is None
+    assert auth_sessions.auth_session.revoked_at is None
+
+
+def test_refresh_reused_after_the_grace_window_revokes_the_session() -> None:
+    service, _, auth_sessions, _, _ = _service_fixture()
+    context = _refresh_context(
+        auth_sessions, created_ago=timedelta(minutes=1), session_left=timedelta(days=5)
+    )
+    _rotate_and_age(service, auth_sessions, context, seconds=16)
+
+    with pytest.raises(UnauthorizedException) as raised:
+        asyncio.run(service.refresh(context))
+
+    assert not isinstance(raised.value, RefreshSupersededException)
+    assert auth_sessions.revocation_reason == "refresh_replay"
+
+
+def test_refresh_reused_after_the_successor_was_used_revokes_the_session() -> None:
+    service, _, auth_sessions, _, _ = _service_fixture()
+    context = _refresh_context(
+        auth_sessions, created_ago=timedelta(minutes=1), session_left=timedelta(days=5)
+    )
+    _rotate_and_age(service, auth_sessions, context, seconds=2)
+    auth_sessions.issued[0].consumed_at = datetime.now(UTC)
+
+    with pytest.raises(UnauthorizedException) as raised:
+        asyncio.run(service.refresh(context))
+
+    assert not isinstance(raised.value, RefreshSupersededException)
+    assert auth_sessions.revocation_reason == "refresh_replay"
+
+
+def test_login_records_success_for_the_user() -> None:
+    service, _, _, user, password, events = _audited_fixture()
+
+    asyncio.run(service.login(user.email, password))
+
+    [event] = events.events
+    assert (event.action, event.user_id, event.actor_user_id) == (
+        "auth.login_succeeded",
+        user.id,
+        user.id,
+    )
+
+
+def test_wrong_password_commits_a_failure_before_refusing() -> None:
+    service, session, _, user, _, events = _audited_fixture()
+
+    with pytest.raises(UnauthorizedException):
+        asyncio.run(service.login(user.email, "not the password"))
+
+    [event] = events.events
+    assert event.action == "auth.login_failed"
+    assert event.payload == {"reason": "invalid_password"}
+    assert (session.commits, session.rollbacks) == (1, 0)
+
+
+def test_disabled_account_login_records_the_disabled_reason() -> None:
+    service, _, _, user, password, events = _audited_fixture()
+    user.disabled_at = datetime.now(UTC)
+
+    with pytest.raises(UnauthorizedException):
+        asyncio.run(service.login(user.email, password))
+
+    assert events.events[0].payload == {"reason": "disabled"}
+
+
+def test_unknown_email_records_no_event(caplog: pytest.LogCaptureFixture) -> None:
+    service, session, _, _, _, events = _audited_fixture()
+    caplog.set_level("WARNING")
+
+    with pytest.raises(UnauthorizedException):
+        asyncio.run(service.login("nobody@example.test", "whatever"))
+
+    assert events.events == []
+    assert session.commits == 0
+    assert "login failed for an unknown account" in caplog.text
+    assert "nobody@example.test" not in caplog.text
+
+
+def test_logout_records_an_event_for_the_session_user() -> None:
+    service, _, auth_sessions, user, _, events = _audited_fixture()
+    csrf = new_secret()
+    auth_sessions.auth_session.csrf_token_hash = hash_secret(csrf)
+    context = AuthRequestContext(
+        origin="http://localhost:3000",
+        access_token="invalid",
+        refresh_token=f"{auth_sessions.refresh.id}.secret",
+        csrf_cookie=csrf,
+        csrf_header=csrf,
+    )
+
+    asyncio.run(service.logout(context))
+
+    assert events.actions == ["auth.logout"]
+    assert events.events[0].user_id == user.id
+
+
+def test_refresh_token_replay_records_reuse_with_no_actor() -> None:
+    service, session, auth_sessions, user, _, events = _audited_fixture()
+    secret = new_secret()
+    auth_sessions.refresh.secret_hash = hash_secret(secret)
+    auth_sessions.refresh.consumed_at = datetime.now(UTC) - timedelta(hours=1)
+    context = AuthRequestContext(
+        origin="http://localhost:3000",
+        access_token=None,
+        refresh_token=f"{auth_sessions.refresh.id}.{secret}",
+        csrf_cookie=None,
+        csrf_header=None,
+    )
+
+    with pytest.raises(UnauthorizedException):
+        asyncio.run(service.refresh(context))
+
+    [event] = events.events
+    assert (event.action, event.user_id, event.actor_user_id) == (
+        "auth.refresh_token_reused",
+        user.id,
+        None,
+    )
+    assert auth_sessions.revocation_reason == "refresh_replay"
     assert session.commits == 1

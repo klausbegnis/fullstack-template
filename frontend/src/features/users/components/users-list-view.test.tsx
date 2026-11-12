@@ -1,8 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { UsersListView } from "@/features/users/components/users-list-view";
+import { UsersListView, type UsersPagerProps } from "@/features/users/components/users-list-view";
 import type { User } from "@/features/users/model/user";
+import { buildUser } from "@/features/users/testing/factories";
 
 const users: User[] = [
   {
@@ -25,20 +26,20 @@ const users: User[] = [
   },
 ];
 
+function pager(overrides: Partial<UsersPagerProps> = {}): UsersPagerProps {
+  return {
+    page: 1,
+    pageCount: 3,
+    totalItems: 45,
+    pageSize: 20,
+    onPageChange: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe("UsersListView", () => {
   it("lists each user by name, email and status", () => {
-    render(
-      <UsersListView
-        users={users}
-        status="ready"
-        page={1}
-        totalPages={2}
-        canGoToPreviousPage={false}
-        canGoToNextPage={true}
-        onPreviousPage={vi.fn()}
-        onNextPage={vi.fn()}
-      />,
-    );
+    render(<UsersListView users={users} status="ready" pager={pager()} />);
 
     expect(screen.getByRole("link", { name: "Ada Lovelace" })).toBeInTheDocument();
     expect(screen.getByText("grace@example.com")).toBeInTheDocument();
@@ -46,76 +47,59 @@ describe("UsersListView", () => {
     expect(screen.getByText("Active")).toBeInTheDocument();
   });
 
+  it("names a user without a name by the local part of their email", () => {
+    const unnamed = buildUser({ id: "a3", name: "", email: "root@example.com" });
+    render(<UsersListView users={[unnamed]} status="ready" pager={pager()} />);
+
+    expect(screen.getByRole("link", { name: "root" })).toHaveAttribute("href", "/users/a3");
+  });
+
   it("shows a spinner while loading and no table", () => {
-    render(
-      <UsersListView
-        users={[]}
-        status="loading"
-        page={1}
-        totalPages={1}
-        canGoToPreviousPage={false}
-        canGoToNextPage={false}
-        onPreviousPage={vi.fn()}
-        onNextPage={vi.fn()}
-      />,
-    );
+    render(<UsersListView users={[]} status="loading" pager={pager()} />);
 
     expect(screen.getByRole("status")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
   it("shows an error alert when loading failed", () => {
-    render(
-      <UsersListView
-        users={[]}
-        status="error"
-        page={1}
-        totalPages={1}
-        canGoToPreviousPage={false}
-        canGoToNextPage={false}
-        onPreviousPage={vi.fn()}
-        onNextPage={vi.fn()}
-      />,
-    );
+    render(<UsersListView users={[]} status="error" pager={pager()} />);
 
     expect(screen.getByRole("alert")).toHaveTextContent("Failed to load users");
   });
 
-  it("reports the page the caller requested", async () => {
-    const user = userEvent.setup();
-    const onNextPage = vi.fn();
+  it("shows an empty state with a create link when there are no users", () => {
     render(
-      <UsersListView
-        users={users}
-        status="ready"
-        page={1}
-        totalPages={2}
-        canGoToPreviousPage={false}
-        canGoToNextPage={true}
-        onPreviousPage={vi.fn()}
-        onNextPage={onNextPage}
-      />,
+      <UsersListView users={[]} status="ready" pager={pager({ totalItems: 0, pageCount: 1 })} />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Next" }));
-
-    expect(onNextPage).toHaveBeenCalledOnce();
+    expect(screen.getByRole("heading", { level: 2, name: "No users yet" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Create the first user" })).toHaveAttribute(
+      "href",
+      "/users/new",
+    );
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
-  it("disables the previous button on the first page", () => {
+  it("pages through the shared pager and reports the page asked for", async () => {
+    const user = userEvent.setup();
+    const onPageChange = vi.fn();
+    render(<UsersListView users={users} status="ready" pager={pager({ onPageChange })} />);
+
+    expect(screen.getByRole("navigation", { name: "Users pagination" })).toHaveTextContent(
+      "Showing 1–20 of 45 users",
+    );
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "Page 3" }));
+
+    expect(onPageChange.mock.calls).toEqual([[2], [3]]);
+  });
+
+  it("hides the pager when every user fits on one page", () => {
     render(
-      <UsersListView
-        users={users}
-        status="ready"
-        page={1}
-        totalPages={2}
-        canGoToPreviousPage={false}
-        canGoToNextPage={true}
-        onPreviousPage={vi.fn()}
-        onNextPage={vi.fn()}
-      />,
+      <UsersListView users={users} status="ready" pager={pager({ totalItems: 2, pageCount: 1 })} />,
     );
 
-    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    expect(screen.queryByRole("navigation", { name: "Users pagination" })).not.toBeInTheDocument();
   });
 });

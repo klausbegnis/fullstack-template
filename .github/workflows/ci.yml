@@ -2,22 +2,99 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.draft && 'draft' || 'ready' }}
+  cancel-in-progress: true
+
 jobs:
+  changes:
+    name: Changes
+    if: ${{ github.event.pull_request.draft != true }}
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.scope.outputs.backend }}
+      frontend: ${{ steps.scope.outputs.frontend }}
+      harness: ${{ steps.scope.outputs.harness }}
+      images: ${{ steps.scope.outputs.images }}
+      e2e: ${{ steps.scope.outputs.e2e }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Decide which jobs this change needs
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eu
+          everything=false
+          changed=""
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            everything=true
+          else
+            changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          fi
+          printf 'Changed paths:\n%s\n' "$changed"
+
+          matches() {
+            printf '%s\n' "$changed" | grep -qE "$1"
+          }
+
+          if matches '^(\.github/workflows/|docker-compose\.yml$|(.*/)?Dockerfile[^/]*$|(.*/)?\.dockerignore$)'; then
+            everything=true
+          fi
+
+          backend=$everything
+          frontend=$everything
+          harness=$everything
+          images=$everything
+          e2e=$everything
+          if matches '^backend/'; then
+            backend=true
+          fi
+          if matches '^(frontend/|backend/openapi\.json$)'; then
+            frontend=true
+          fi
+          if matches '^(\.github|\.githooks|\.claude|\.agents|\.codex|docs|scripts|frontend|e2e)/|^[^/]+\.md$|(^|/)(AGENTS|CLAUDE)\.md$'; then
+            harness=true
+          fi
+          if matches '^(backend/(pyproject\.toml|uv\.lock)|frontend/(package(-lock)?\.json))$'; then
+            images=true
+          fi
+          if [ "$backend" = true ] || [ "$frontend" = true ] || matches '^e2e/'; then
+            e2e=true
+          fi
+
+          {
+            echo "backend=$backend"
+            echo "frontend=$frontend"
+            echo "harness=$harness"
+            echo "images=$images"
+            echo "e2e=$e2e"
+          } | tee -a "$GITHUB_OUTPUT"
+
   backend:
     name: Backend
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: backend
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
         env:
           POSTGRES_DB: app
           POSTGRES_USER: app
@@ -33,9 +110,9 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://app:app@localhost:5432/app
       AUTH_JWT_SECRET: github-actions-insecure-secret-value-32b
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e
         with:
           python-version: "3.12"
           enable-cache: true
@@ -58,7 +135,7 @@ jobs:
         run: uv run alembic check
 
       - name: Test
-        run: uv run pytest
+        run: uv run pytest -n 4
 
       - name: Verify the committed OpenAPI contract is current
         run: |
@@ -67,13 +144,15 @@ jobs:
 
   harness:
     name: Harness
+    needs: changes
+    if: ${{ needs.changes.outputs.harness == 'true' }}
     runs-on: ubuntu-latest
     env:
       AUTH_JWT_SECRET: github-actions-insecure-secret-value-32b
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e
         with:
           python-version: "3.12"
           enable-cache: true
@@ -93,16 +172,18 @@ jobs:
 
   frontend:
     name: Frontend
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: "22"
+          node-version-file: frontend/.nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -117,8 +198,151 @@ jobs:
       - name: Check formatting
         run: npm run format
 
+      - name: Test the custom lint rules
+        run: npm run test:lint-rules
+
       - name: Test
         run: npm run test
 
       - name: Build
         run: npm run build
+
+  audit:
+    name: Dependency audit
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version-file: frontend/.nvmrc
+
+      - name: Scan lockfiles, secrets and misconfigurations with uv audit, npm audit and trivy
+        run: scripts/audit-deps.sh --strict --out audit-report
+
+      - name: Upload the audit reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: audit-report
+          path: audit-report
+          retention-days: 14
+
+  image-audit:
+    name: Image audit
+    needs: changes
+    if: ${{ needs.changes.outputs.images == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version-file: frontend/.nvmrc
+
+      - name: Build the api and frontend images and scan them with trivy
+        run: scripts/audit-deps.sh --strict --images-only --out image-audit-report
+
+      - name: Upload the image audit reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: image-audit-report
+          path: image-audit-report
+          retention-days: 14
+
+  e2e:
+    name: E2E
+    needs: changes
+    if: ${{ needs.changes.outputs.e2e == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      AUTH_JWT_SECRET: github-actions-insecure-secret-value-32b
+      ENVIRONMENT: development
+      AUTH_COOKIE_SECURE: "false"
+      E2E_ADMIN_EMAIL: e2e-admin@example.test
+      E2E_ADMIN_PASSWORD: e2e-not-a-real-pw
+      RATE_LIMIT_LOGIN_PER_IP: "10000"
+      RATE_LIMIT_LOGIN_PER_EMAIL: "10000"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Build and start the stack
+        run: docker compose up --build --wait
+
+      - name: Apply migrations
+        run: docker compose exec -T api alembic upgrade head
+
+      - name: Bootstrap the E2E admin
+        run: >-
+          docker compose exec -T api python -m app.commands.bootstrap_admin
+          "$E2E_ADMIN_EMAIL" --password "$E2E_ADMIN_PASSWORD" --yes
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version-file: e2e/.nvmrc
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install E2E dependencies
+        run: npm ci
+        working-directory: e2e
+
+      - name: Lint
+        run: npm run lint
+        working-directory: e2e
+
+      - name: Type check
+        run: npm run typecheck
+        working-directory: e2e
+
+      - name: Check formatting
+        run: npm run format
+        working-directory: e2e
+
+      - name: Run the E2E suite in the compose e2e service
+        run: E2E_UID="$(id -u)" E2E_GID="$(id -g)" docker compose --profile e2e run --rm e2e
+
+      - name: Upload the Playwright report and traces
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 14
+
+      - name: Dump compose logs
+        if: ${{ failure() }}
+        run: docker compose logs --no-color --tail 300
+
+      - name: Stop the stack
+        if: ${{ always() }}
+        run: docker compose down -v
+
+  result:
+    name: CI result
+    needs: [changes, backend, harness, frontend, audit, image-audit, e2e]
+    if: ${{ always() && github.event.pull_request.draft != true }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail when any required job failed or was cancelled
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "Job results: $RESULTS"
+          case "$RESULTS" in
+            *failure*|*cancelled*)
+              echo "::error::At least one CI job failed or was cancelled."
+              exit 1
+              ;;
+          esac
+          echo "Every job succeeded or was skipped as out of scope."

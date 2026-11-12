@@ -9,23 +9,23 @@ when you touch matching files. `CLAUDE.md` files are one line, `@AGENTS.md`, eve
 
 | Backend | Version | Frontend | Version |
 |---|---|---|---|
-| Python | 3.12 | Next.js | 16.3.5 (Turbopack) |
+| Python | 3.12 | Next.js | 16.4.6 (Turbopack) |
 | FastAPI | 0.141.1 | React / react-dom | 19.2.0 |
 | SQLAlchemy (async) | 2.0.54 | TypeScript (strict) | 5.9.3 |
 | asyncpg | 0.31.0 | Tailwind CSS | 4.1.11 (CSS-first, no `tailwind.config.*`) |
 | Alembic | 1.20.0 | @tanstack/react-query | 5.103.1 |
 | pydantic / pydantic-settings | 2.13.5 / 2.15.0 | zustand | 5.0.11 |
-| PyJWT | 2.14.0 | react-hook-form / zod / @hookform/resolvers | 7.88.0 / 4.6.5 / 5.9.1 |
+| PyJWT | 2.15.1 | react-hook-form / zod / @hookform/resolvers | 7.88.0 / 4.6.7 / 5.9.1 |
 | argon2-cffi | 25.1.0 | orval | 8.34.0 |
 | uvicorn | 0.53.0 | vitest / @vitest/coverage-v8 | 4.1.11 |
-| ruff | 0.16.8 | eslint / eslint-config-next | 9.39.5 / 16.3.5 |
-| mypy (strict) | 2.3.1 | eslint-plugin-boundaries | 7.2.0 |
-| pytest | 9.1.1 | eslint-plugin-use-client | 1.2.0 |
+| ruff | 0.16.8 | eslint / eslint-config-next | 9.39.5 / 16.4.6 |
+| mypy (strict) | 2.3.1 | eslint-plugin-boundaries | 7.4.3 |
+| pytest / pytest-xdist | 9.1.1 / 3.8.0 | eslint-plugin-use-client | 1.2.0 |
 | PostgreSQL | 16 | prettier | 3.5.3 |
-| — | — | Node.js | 22 (`frontend/.nvmrc`, `engines.node`; CI uses 22) |
+| — | — | Node.js | 22 (`frontend/.nvmrc`, `engines.node: 22.x` with `engine-strict`; CI uses 22) |
 
 Backend uses `uv`; frontend uses `npm` (`package-lock.json` committed). eslint is pinned to
-`9.39.5` exactly — `eslint-config-next@16.3.5` breaks on ESLint 10.
+`9.39.5` exactly — `eslint-config-next@16.4.6` breaks on ESLint 10.
 
 ## Rules index — read the matching file before editing
 
@@ -36,6 +36,7 @@ file yourself before editing (the PostToolUse hook also injects the matching rul
 | Rule file | Loads for |
 |---|---|
 | `.agents/rules/backend/layering.md` | `backend/app/**` — router → service → repository → model, DI aliases, envelopes, `APIException` only, `async def` everywhere |
+| `.agents/rules/backend/logging.md` | `backend/app/**` — `get_logger`, constant messages, data in `extra`, no secrets/PII |
 | `.agents/rules/backend/persistence.md` | `backend/app/models/**`, `backend/app/repositories/**`, `backend/alembic/**` — schema pins, naming convention, `.flush()` only, migrations |
 | `.agents/rules/backend/api-crud.md` | `backend/app/{routers,schemas,services,dependencies}/**` — the CRUD recipe: auth dep per route, return annotations, status codes, transaction boundary, contract sync |
 | `.agents/rules/backend/testing.md` | `backend/tests/**` — two tiers, fakes over mocks, one test module per service and router |
@@ -44,6 +45,7 @@ file yourself before editing (the PostToolUse hook also injects the matching rul
 | `.agents/rules/frontend/data-and-forms.md` | `features/*/{api,containers,hooks,model}/**` — TanStack Query factories, mutations, derived state, forms |
 | `.agents/rules/frontend/ui-components.md` | `frontend/src/components/**`, `features/*/components/**` — props-only views, no `'use client'`, accessibility |
 | `.agents/rules/frontend/testing.md` | `frontend/src/**/*.test.*`, `frontend/src/testing/**` — layer → test type, MSW only, role queries |
+| `.agents/rules/e2e.md` | `e2e/**` — role locators, web-first waits, API seed, route manifest, compose `e2e` run |
 | `.agents/rules/harness.md` | `.claude/**`, `.agents/**`, `.codex/**`, `.github/**`, `docs/prds/**` — issue/PRD contract, single-source layout |
 
 Nested guides `backend/AGENTS.md` and `frontend/AGENTS.md` repeat their side's index and carry
@@ -65,6 +67,7 @@ the `## Code Review Rules` Codex applies per changed file in PR review.
   `app_csrf` for double-submit CSRF. Never `localStorage`/`sessionStorage`. `frontend/src/middleware.ts`
   (`proxy.ts` in Next 16.3+) is a cookie-presence redirect, not the authorization boundary
   (CVE-2025-29927); the gate is `frontend/src/lib/auth/dal.ts` (`requireUser()`/`getCurrentUser()`).
+  `/api/auth/renew` is a reserved Next Route Handler, not proxied to the API.
 - **`'use client'` only where a client-only feature is genuinely used** — code crosses through
   imports, data crosses through props. `features/*/components/` render on the server.
 - **Never edit a migration that is on `main`; never hand-edit `frontend/src/lib/api/generated/`.**
@@ -94,7 +97,7 @@ Backend, from `backend/`:
 |---|---|
 | Install | `uv sync` |
 | Run dev server | `uv run python main.py` |
-| Test | `uv run pytest` — the integration tier is **silently skipped** without `DATABASE_URL`; a green run without it is not full coverage |
+| Test | `uv run pytest -n 4` (one database per worker) — the integration tier is **silently skipped** without `DATABASE_URL`; a green run without it is not full coverage |
 | Lint / format | `uv run ruff check .` · `uv run ruff format --check .` (`ruff format .` to write) |
 | Typecheck | `uv run mypy app` |
 | Migrations | `uv run alembic upgrade head` · `uv run alembic check` (both need a reachable `DATABASE_URL`) |
@@ -156,7 +159,7 @@ agent bodies are tool-neutral, with a closing `## Harness notes` for the differe
 | `.agents/skills/orchestrate/` | `orchestrate --label <l> \| <items>` — runs a backlog of `task` items concurrently with isolation. |
 | `.agents/skills/scaffold-crud/` | generates a rule-compliant backend slice and/or frontend feature behind an approved artifact list. |
 | `.agents/skills/verify-rules/` | plants known violations and reports which gate caught each; run after touching lint or architecture tests. |
-| `.agents/skills/fastapi/`, `.agents/skills/react-best-practices/` | vendored upstream skills (FastAPI's, from the installed package; Vercel's). Repo rules win on conflict. |
+| `.agents/skills/fastapi/`, `.agents/skills/react-best-practices/`, `.agents/skills/security-audit/` | vendored upstream skills (FastAPI's, from the installed package; Vercel's; Cloudflare's security audit, see `docs/development/security-audit.md`). Repo rules win on conflict. |
 | `.agents/agents/{backend,frontend}-reviewer.md`, `uncle-bob.md` | read-only review rubrics (architecture per side; clean code across both). |
 
 Invocation: `/name` in Claude Code, `$name` in Codex. Codex loads nested `AGENTS.md` only for the

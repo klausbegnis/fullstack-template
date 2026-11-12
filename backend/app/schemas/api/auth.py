@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import uuid
 
 from pydantic import BaseModel, Field
@@ -17,3 +18,17 @@ class AuthUserRead(BaseModel):
     name: str
     email: str
     role: UserRole
+
+
+class AuthSessionExpiry(BaseModel):
+    """When the issued access token and the whole session stop being valid."""
+
+    access_expires_at: datetime
+    session_expires_at: datetime
+
+
+class AuthLoginRead(AuthUserRead):
+    """The signed-in identity plus the expiry of the session just opened."""
+
+    access_expires_at: datetime
+    session_expires_at: datetime

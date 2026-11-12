@@ -11,6 +11,7 @@ in [`docs/architecture/backend.md`](../docs/architecture/backend.md).
 | Rule file                                                                         | Applies to                                                                                                   |
 | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | [`.agents/rules/backend/layering.md`](../.agents/rules/backend/layering.md)       | `backend/app/**`                                                                                             |
+| [`.agents/rules/backend/logging.md`](../.agents/rules/backend/logging.md)       | `backend/app/**`                                                                                             |
 | [`.agents/rules/backend/persistence.md`](../.agents/rules/backend/persistence.md) | `backend/app/models/**`, `backend/app/repositories/**`, `backend/alembic/**`                                 |
 | [`.agents/rules/backend/api-crud.md`](../.agents/rules/backend/api-crud.md)       | `backend/app/routers/**`, `backend/app/schemas/**`, `backend/app/services/**`, `backend/app/dependencies/**` |
 | [`.agents/rules/backend/testing.md`](../.agents/rules/backend/testing.md)         | `backend/tests/**`                                                                                           |
@@ -24,7 +25,7 @@ Run from `backend/`. `DATABASE_URL` and `AUTH_JWT_SECRET` must be set first — 
 | ------------- | -------------------------------------------------------------------------------------------------------------------- |
 | Lint / format | `uv run ruff check .` · `uv run ruff format --check .`                                                               |
 | Typecheck     | `uv run mypy app`                                                                                                    |
-| Test          | `uv run pytest` (integration tier is skipped without `DATABASE_URL`)                                                 |
+| Test          | `uv run pytest -n 4` (one database per xdist worker; integration tier is skipped without `DATABASE_URL`)            |
 | Migrations    | `uv run python -m app.commands.create_migration -m "<msg>"` · `uv run alembic upgrade head` · `uv run alembic check` |
 | API contract  | `uv run python -m app.commands.export_openapi`                                                                       |
 

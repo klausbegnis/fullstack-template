@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { User } from "@/features/users/model/user";
+import { displayNameOf, type User } from "@/features/users/model/user";
 
 export interface UserDetailViewProps {
   user: User;
@@ -15,7 +15,7 @@ export function UserDetailView({ user, editForm, disableControl }: UserDetailVie
   return (
     <div className="flex max-w-lg flex-col gap-6">
       <div>
-        <h1 className="text-lg font-semibold text-gray-900">{user.name}</h1>
+        <h1 className="text-lg font-semibold text-gray-900">{displayNameOf(user)}</h1>
         <p className="text-sm text-gray-600">{user.email}</p>
         <p className="text-sm text-gray-600">
           {user.role} · {user.disabledAt ? "Disabled" : "Active"}

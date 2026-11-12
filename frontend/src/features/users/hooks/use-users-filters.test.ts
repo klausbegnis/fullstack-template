@@ -3,15 +3,13 @@ import { describe, expect, it } from "vitest";
 import { useUsersFilters } from "@/features/users/hooks/use-users-filters";
 
 describe("useUsersFilters", () => {
-  it("starts on page 1 and disallows going to the previous page", () => {
+  it("starts on page 1 with the default page size", () => {
     const { result } = renderHook(() => useUsersFilters());
 
-    expect(result.current.filters.page).toBe(1);
-    expect(result.current.canGoToPreviousPage).toBe(false);
-    expect(result.current.canGoToNextPage(3)).toBe(true);
+    expect(result.current.filters).toEqual({ page: 1, pageSize: 20 });
   });
 
-  it("moves to the requested page and updates the derived guards", () => {
+  it("moves to the requested page", () => {
     const { result } = renderHook(() => useUsersFilters());
 
     act(() => {
@@ -19,8 +17,6 @@ describe("useUsersFilters", () => {
     });
 
     expect(result.current.filters.page).toBe(2);
-    expect(result.current.canGoToPreviousPage).toBe(true);
-    expect(result.current.canGoToNextPage(2)).toBe(false);
   });
 
   it("never goes below page 1", () => {

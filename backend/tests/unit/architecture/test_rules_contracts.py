@@ -24,6 +24,7 @@ FRONTEND_GUIDE = REPO_ROOT / "frontend" / "AGENTS.md"
 
 EXPECTED_RULE_FILES = {
     "backend/layering.md",
+    "backend/logging.md",
     "backend/persistence.md",
     "backend/api-crud.md",
     "backend/testing.md",
@@ -32,6 +33,7 @@ EXPECTED_RULE_FILES = {
     "frontend/data-and-forms.md",
     "frontend/ui-components.md",
     "frontend/testing.md",
+    "e2e.md",
     "harness.md",
 }
 IGNORED_DIRECTORIES = {"node_modules", ".venv", ".next", ".git", "__pycache__"}

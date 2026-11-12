@@ -24,6 +24,12 @@ describe("UserDetailView", () => {
     expect(screen.getByText("Edit form")).toBeInTheDocument();
   });
 
+  it("heads a user without a name with the local part of their email", () => {
+    renderView(buildUser({ name: "", email: "root@example.com" }));
+
+    expect(screen.getByRole("heading", { level: 1, name: "root" })).toBeInTheDocument();
+  });
+
   it("hides the disable control once the user is disabled", () => {
     renderView(buildUser({ role: "member", disabledAt: new Date("2026-02-01T00:00:00Z") }));
 

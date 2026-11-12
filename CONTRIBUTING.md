@@ -106,7 +106,7 @@ Backend, from `backend/`:
 | Lint | `uv run ruff check .` |
 | Typecheck | `uv run mypy app` |
 | Migrations vs. models | `uv run alembic upgrade head && uv run alembic check` (needs `DATABASE_URL`) |
-| Tests | `uv run pytest` (see the warning below) |
+| Tests | `uv run pytest -n 4` (see the warning below) |
 
 Frontend, from `frontend/`:
 
@@ -125,10 +125,10 @@ entire integration tier.** In this checkout that is the difference between:
 
 | `DATABASE_URL` | Result | What actually ran |
 |---|---|---|
-| unset | `180 passed, 24 skipped` | unit tier only; exit code 0 |
-| set to a reachable Postgres 16 | `204 passed` | unit tier plus the 24 integration tests |
+| unset | `877 passed, 78 skipped` | unit tier only; exit code 0 |
+| set to a reachable Postgres 16 | `955 passed` | unit tier plus the 78 integration tests |
 
-The absolute totals move every time someone adds a test. The gap does not: those 24 tests are
+The absolute totals move every time someone adds a test. The gap does not: those 78 tests are
 the only ones that exercise a real database, a real session, and the real error contract.
 
 A skip is not a pass. Before opening or approving a PR that touches `backend/`, run the full
@@ -138,20 +138,27 @@ suite against a real database:
 export DATABASE_URL="postgresql+asyncpg://app:app@localhost:5432/app"
 export AUTH_JWT_SECRET="local-verification-insecure-secret-32bytes"
 uv run alembic upgrade head
-uv run pytest
+uv run pytest -n 4
 ```
+
+`-n 4` runs the suite on four pytest-xdist workers. Each worker creates its own migrated database
+on the same server (`<database>_<worker>_<run>`, see `tests/support/worker_database.py`) and drops
+it when it finishes, so workers never see each other's rows. Migration tests that downgrade work on
+scratch databases cloned per test (`tests/support/scratch_database.py`). Without `-n` the suite
+runs serially against `DATABASE_URL` itself.
 
 If the output says `skipped` and you have not set `DATABASE_URL`, you have not run the tests —
 you have run a subset that happens to exit 0.
 
 ## Pre-commit hook
 
-`.githooks/pre-commit` is change-scoped: it inspects staged paths and only runs the stack that
-changed. On staged `backend/` files it runs `ruff format --check`, `ruff check`, and
-`pytest tests/unit` (unit tier only, no database). On staged `frontend/` files it runs `format`,
-`lint`, and `test:fast`. On staged `.github/`, `.claude/`, `.agents/`, `.codex/`, `docs/prds/` or `scripts/`
+`.githooks/pre-commit` is change-scoped and fast: it inspects staged paths and only checks the
+stack that changed, and it runs no test suite. On staged `backend/` files it runs
+`ruff format --check` and `ruff check`. On staged `frontend/` files it first refuses a `node` whose
+major differs from `frontend/.nvmrc` (`task_env.py node`), then runs Prettier and ESLint on the
+staged frontend files only. On staged `.github/`, `.claude/`, `.agents/`, `.codex/`, `docs/prds/` or `scripts/`
 files it runs the harness contract tests, the task-environment tests and the hook tests. An untouched stack is skipped entirely. It does not run mypy,
-`typecheck`, `build`, or the database-backed integration tests — those are CI's job.
+`typecheck`, the test suites or `build` — those are the task gates' and CI's job.
 
 Install it per clone:
 

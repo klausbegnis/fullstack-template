@@ -12,11 +12,19 @@ from app.core.exceptions import (
     NotFoundException,
     ValidationException,
 )
-from app.core.security import hash_password
+from app.core.security import hash_password_off_loop
 from app.core.transactions import transaction
 from app.models.user import User, UserRole
+from app.repositories.security_events import SecurityEventRepository
 from app.repositories.users import UserRepository
 from app.schemas.api.users import UserCreate, UserListFilters, UserRead, UserUpdate
+from app.services.security_audit import (
+    ROLE_CHANGED,
+    USER_CREATED,
+    USER_DISABLED,
+    USER_UPDATED,
+    record_security_event,
+)
 
 
 def normalize_name(name: str) -> str:
@@ -40,9 +48,16 @@ def to_user_read(user: User) -> UserRead:
 class UserService:
     """Coordinate user-management use cases and their transaction boundaries."""
 
-    def __init__(self, *, session: AsyncSession, users: UserRepository) -> None:
+    def __init__(
+        self,
+        *,
+        session: AsyncSession,
+        users: UserRepository,
+        security_events: SecurityEventRepository,
+    ) -> None:
         self._session = session
         self._users = users
+        self._security_events = security_events
 
     async def list_users(self, filters: UserListFilters) -> tuple[list[UserRead], int]:
         users, total = await self._users.list(
@@ -56,7 +71,7 @@ class UserService:
             raise NotFoundException("User not found")
         return to_user_read(user)
 
-    async def create_user(self, payload: UserCreate) -> UserRead:
+    async def create_user(self, actor: User, payload: UserCreate) -> UserRead:
         name = normalize_name(payload.name)
         if not name:
             raise ValidationException("User name cannot be empty", {"field": "name"})
@@ -65,10 +80,17 @@ class UserService:
                 user = await self._users.create(
                     name=name,
                     email=payload.email,
-                    password_hash=hash_password(payload.password),
+                    password_hash=await hash_password_off_loop(payload.password),
                 )
                 if payload.role is not UserRole.MEMBER:
                     await self._users.update(user, role=payload.role)
+                await record_security_event(
+                    self._security_events,
+                    action=USER_CREATED,
+                    user_id=user.id,
+                    actor_user_id=actor.id,
+                    payload={"role": user.role.value},
+                )
         except IntegrityError:
             raise ConflictException("A user with this email already exists") from None
         return to_user_read(user)
@@ -91,21 +113,53 @@ class UserService:
                         "User name cannot be empty", {"field": "name"}
                     )
                 await self._guard_last_admin_demotion(user, payload.role)
+                old_role = user.role
                 await self._users.update(
                     user, name=name, email=payload.email, role=payload.role
                 )
+                await self._record_update(actor, user, payload, old_role)
         except IntegrityError:
             raise ConflictException("A user with this email already exists") from None
         return to_user_read(user)
 
-    async def disable_user(self, user_id: uuid.UUID) -> UserRead:
+    async def disable_user(self, actor: User, user_id: uuid.UUID) -> UserRead:
         async with transaction(self._session):
             user = await self._users.get_for_update(user_id)
             if user is None:
                 raise NotFoundException("User not found")
             await self._guard_last_admin_disable(user)
             await self._users.disable(user)
+            await record_security_event(
+                self._security_events,
+                action=USER_DISABLED,
+                user_id=user.id,
+                actor_user_id=actor.id,
+            )
         return to_user_read(user)
+
+    async def _record_update(
+        self, actor: User, user: User, payload: UserUpdate, old_role: UserRole
+    ) -> None:
+        """Record which profile fields changed, and a role change on its own."""
+        fields = sorted(
+            field for field in ("name", "email") if getattr(payload, field) is not None
+        )
+        if fields:
+            await record_security_event(
+                self._security_events,
+                action=USER_UPDATED,
+                user_id=user.id,
+                actor_user_id=actor.id,
+                payload={"fields": fields},
+            )
+        if payload.role is not None and payload.role is not old_role:
+            await record_security_event(
+                self._security_events,
+                action=ROLE_CHANGED,
+                user_id=user.id,
+                actor_user_id=actor.id,
+                payload={"old_role": old_role.value, "role": payload.role.value},
+            )
 
     async def _guard_last_admin_demotion(
         self, user: User, new_role: UserRole | None

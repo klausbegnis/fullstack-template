@@ -16,9 +16,10 @@ interface HarnessProps {
   includePassword: boolean;
   formError: string | null;
   onSubmit: () => void;
+  heading?: string;
 }
 
-function Harness({ includePassword, formError, onSubmit }: HarnessProps) {
+function Harness({ includePassword, formError, onSubmit, heading }: HarnessProps) {
   const form = useForm<HarnessValues>({
     defaultValues: { name: "", email: "", password: "", role: "member" },
   });
@@ -37,6 +38,7 @@ function Harness({ includePassword, formError, onSubmit }: HarnessProps) {
       onSubmit={handleSubmit}
       includePassword={includePassword}
       submitLabel="Create user"
+      heading={heading}
     />
   );
 }
@@ -55,6 +57,17 @@ describe("UserFormView", () => {
     await user.click(screen.getByRole("button", { name: "Create user" }));
 
     expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
+  it("heads the form with the heading it was given, and with none by default", () => {
+    const { unmount } = render(
+      <Harness includePassword formError={null} onSubmit={vi.fn()} heading="New user" />,
+    );
+    expect(screen.getByRole("heading", { level: 1, name: "New user" })).toBeInTheDocument();
+    unmount();
+
+    render(<Harness includePassword formError={null} onSubmit={vi.fn()} />);
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
   });
 
   it("omits the password field and announces the form-level error", () => {

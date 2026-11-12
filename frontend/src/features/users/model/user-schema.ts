@@ -8,7 +8,10 @@ export const createUserSchema = z.object({
     .email("Enter a valid email address")
     .min(3, "Email is required")
     .max(320, "Email is too long"),
-  password: z.string().min(1, "Password is required").max(1024, "Password is too long"),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(1024, "Password is too long"),
   role: userRoleSchema.default("member"),
 });
 

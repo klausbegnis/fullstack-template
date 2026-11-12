@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily backup of the app stack (Postgres dump and config)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/default/app-backup
+ExecStart=/usr/local/sbin/app-backup
+Nice=10

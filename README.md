@@ -14,9 +14,11 @@ vertical (frontend) — see the recipes in [`AGENTS.md`](./AGENTS.md).
 
 | | |
 |---|---|
-| Backend | FastAPI + SQLAlchemy 2.0 (async) + asyncpg + Alembic + PostgreSQL 16, Argon2id password hashing, JWT access tokens + rotating opaque refresh tokens, double-submit CSRF, RBAC (admin/member) |
-| Frontend | Next.js 16.3.5 (App Router, RSC-first) + React 19 + TypeScript (strict) + Tailwind CSS 4 + TanStack Query + react-hook-form/zod, an orval-generated API client |
-| Agent tooling | Claude and Codex skills for grooming, delivery, and orchestration, plus three shared review rubrics — see below |
+| Backend | FastAPI + SQLAlchemy 2.0 (async) + asyncpg + Alembic + PostgreSQL 16, Argon2id password hashing (off the event loop), JWT access tokens + rotating opaque refresh tokens, double-submit CSRF, RBAC (admin/member) |
+| Frontend | Next.js 16.4.6 (App Router, RSC-first) + React 19 + TypeScript (strict) + Tailwind CSS 4 + TanStack Query + react-hook-form/zod, an orval-generated API client, a small accessible UI kit and a responsive app shell |
+| Security | Origin/Referer checks on cookie-authenticated mutations, login rate limits stored in Postgres, a security-event audit log, idle and absolute session lifetimes with silent renewal, a nonce-based Content Security Policy, API docs only in development, non-root digest-pinned images |
+| Operations | Structured JSON logs with request IDs, throttled alerts for unhandled errors (log or any webhook), dependency and image scanning with `uv audit`, `npm audit` and Trivy, Dependabot, an optional single-VPS deploy with Caddy and backups |
+| Agent tooling | Claude and Codex skills for grooming, delivery, orchestration and deploys, three shared review rubrics, and a vendored security-audit skill — see below |
 
 ## Quickstart — Docker Compose
 
@@ -34,7 +36,14 @@ that Compose reads automatically; do not commit it.
 This brings up Postgres 16, the API (migrated automatically on container start via
 `backend/entrypoint.sh`, which runs `alembic upgrade head` before serving), and the frontend,
 proxying `/api/*` from the frontend to the API container. Frontend: http://localhost:3000. API:
-http://localhost:8000.
+http://localhost:8000. Every published port binds to `127.0.0.1` only. The stack runs with
+`ENVIRONMENT=production` by default, so `/docs` is off; set `ENVIRONMENT=development` to get it.
+
+Create the first admin (the password is prompted, never echoed):
+
+```bash
+docker compose exec api python -m app.commands.bootstrap_admin you@example.com
+```
 
 ## Quickstart — local development
 
@@ -54,8 +63,8 @@ pydantic `ValidationError`. `AUTH_JWT_SECRET` is required and has no default —
 bytes before anything will start. Generate one with
 `python -c 'import secrets; print(secrets.token_urlsafe(48))'`.
 
-Frontend (from `frontend/`, requires Node 22+; needs `backend/openapi.json` present, which is
-committed):
+Frontend (from `frontend/`, requires Node 22 exactly — `engine-strict` refuses any other major;
+needs `backend/openapi.json` present, which is committed):
 
 ```bash
 npm ci
@@ -67,18 +76,18 @@ npm run dev
 
 | | Backend (`backend/`) | Frontend (`frontend/`) |
 |---|---|---|
-| Test | `uv run pytest` | `npm run test` |
+| Test | `uv run pytest -n 4` | `npm run test` |
 | Lint | `uv run ruff check .` | `npm run lint` |
 | Format check | `uv run ruff format --check .` | `npm run format` |
 | Typecheck | `uv run mypy app` | `npm run typecheck` |
 | Build/verify | `uv run alembic check` | `npm run build` |
 
-All of the above were run against this repository and passed: **204 backend tests** (with
-`DATABASE_URL` set — without it, 24 integration tests skip silently and the suite still exits 0,
-see [`CONTRIBUTING.md`](./CONTRIBUTING.md)), **50 frontend tests**, clean
-ruff/mypy/eslint/tsc/prettier, and a clean `next build`. `.githooks/pre-commit` (enable with
-`git config core.hooksPath .githooks`) runs a fast, change-scoped subset of these on staged files
-before every commit.
+Run the backend suite with `DATABASE_URL` set: without it the integration tier skips silently
+and the suite still exits 0 (see [`CONTRIBUTING.md`](./CONTRIBUTING.md)). `-n 4` gives each
+pytest-xdist worker its own migrated database. `scripts/audit-deps.sh --strict` scans every
+lockfile, committed secrets and the Docker/compose/workflow configuration (add `--images` to scan
+the built images too). `.githooks/pre-commit` (enable with `git config core.hooksPath .githooks`)
+runs format and lint on the staged files before every commit; the suites run in CI.
 
 ## Architecture
 
@@ -94,6 +103,9 @@ context Alembic setup, and the enforcement mechanisms themselves:
 - [`docs/architecture/frontend.md`](./docs/architecture/frontend.md)
 - [`docs/development/backend.md`](./docs/development/backend.md) — PR checklist
 - [`docs/development/frontend.md`](./docs/development/frontend.md) — PR checklist
+- [`docs/development/dependencies.md`](./docs/development/dependencies.md) — scanning and updating dependencies
+- [`docs/development/security-audit.md`](./docs/development/security-audit.md) — running the security-audit skill
+- [`docs/deploy/vps.md`](./docs/deploy/vps.md) — the optional single-VPS production deploy
 
 Agent-facing rules live in two places: [`AGENTS.md`](./AGENTS.md) holds what every session needs
 (exact versions, commands, env vars, the always-on rules and a Rules index), and
@@ -108,7 +120,9 @@ This template ships a small pipeline for agent-driven development, maintained on
 `.agents/agents/`, hook scripts in `.agents/hooks/` and scaffold generators in `.agents/scaffold/`.
 Claude Code reaches them through the `.claude/rules` and `.claude/skills` symlinks and thin
 `.claude/agents/*.md` files (`/name` commands); Codex reads `.agents/skills/` natively (`$name`
-commands) and its `.codex/agents/*.toml` point at the same rubrics. Ask either harness to delegate a
+commands) and its `.codex/agents/*.toml` point at the same rubrics. `.agents/skills/fastapi` is a
+symlink into the `fastapi` package's own bundled skill, so it resolves only after `uv sync` has
+created `backend/.venv`. Ask either harness to delegate a
 review to `backend-reviewer`, `frontend-reviewer`, or `uncle-bob` by name.
 
 | Claude / Codex | Purpose |
@@ -119,6 +133,9 @@ review to `backend-reviewer`, `frontend-reviewer`, or `uncle-bob` by name.
 | `backend-reviewer` agent | Reviews a backend diff against the layering, migration, DI, auth, and error-contract rules, running the real checks as evidence. |
 | `frontend-reviewer` agent | Reviews a frontend diff against import boundaries, server/client rules, auth, and forms, running the real checks as evidence. |
 | `uncle-bob` agent | Clean-code/design review — naming, function size, duplication, and the no-comments rule — across both stacks. |
+| `/scaffold-crud` / `$scaffold-crud` | Generates a rule-compliant backend slice and frontend feature from `.agents/scaffold/`. |
+| `/security-audit` / `$security-audit` | Cloudflare's source-first security audit, scoped and budgeted (see `docs/development/security-audit.md`). |
+| `/deploy` / `$deploy` | Ships a `main` commit to the optional VPS deploy; human-invoked only. |
 
 `AGENTS.md` is the shared project guide, and `CLAUDE.md` points to it. The Claude
 workflow files hold the detailed repository contracts; Codex skills are short
@@ -144,3 +161,8 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the contribution standards that a
 agents alike, [`docs/prds/README.md`](./docs/prds/README.md) for why PRDs are files and not
 issues, and [`AGENTS.md`](./AGENTS.md) for the full index, exact commands, and mechanical recipes
 for extending either stack.
+
+## License
+
+MIT — see [`LICENSE`](./LICENSE). Vendored third-party material keeps its own license; see
+[`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md).

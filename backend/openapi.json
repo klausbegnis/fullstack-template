@@ -1,6 +1,68 @@
 {
   "components": {
     "schemas": {
+      "AuthLoginRead": {
+        "description": "The signed-in identity plus the expiry of the session just opened.",
+        "properties": {
+          "access_expires_at": {
+            "format": "date-time",
+            "title": "Access Expires At",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          },
+          "session_expires_at": {
+            "format": "date-time",
+            "title": "Session Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "role",
+          "access_expires_at",
+          "session_expires_at"
+        ],
+        "title": "AuthLoginRead",
+        "type": "object"
+      },
+      "AuthSessionExpiry": {
+        "description": "When the issued access token and the whole session stop being valid.",
+        "properties": {
+          "access_expires_at": {
+            "format": "date-time",
+            "title": "Access Expires At",
+            "type": "string"
+          },
+          "session_expires_at": {
+            "format": "date-time",
+            "title": "Session Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_expires_at",
+          "session_expires_at"
+        ],
+        "title": "AuthSessionExpiry",
+        "type": "object"
+      },
       "AuthUserRead": {
         "properties": {
           "email": {
@@ -238,7 +300,7 @@
           },
           "password": {
             "maxLength": 1024,
-            "minLength": 1,
+            "minLength": 8,
             "title": "Password",
             "type": "string"
           },
@@ -408,7 +470,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AuthUserRead"
+                  "$ref": "#/components/schemas/AuthLoginRead"
                 }
               }
             },
@@ -670,7 +732,14 @@
       "post": {
         "operationId": "refresh_auth_refresh_post",
         "responses": {
-          "204": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionExpiry"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "400": {

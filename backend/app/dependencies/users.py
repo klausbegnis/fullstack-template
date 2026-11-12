@@ -7,6 +7,7 @@ from fastapi import Depends
 
 from app.core.exceptions import ForbiddenException
 from app.models.user import User, UserRole
+from app.repositories.security_events import SecurityEventRepository
 from app.repositories.users import UserRepository
 from app.services.users import UserService
 
@@ -15,7 +16,11 @@ from .database import SessionDep
 
 
 def get_user_service(session: SessionDep) -> UserService:
-    return UserService(session=session, users=UserRepository(session))
+    return UserService(
+        session=session,
+        users=UserRepository(session),
+        security_events=SecurityEventRepository(session),
+    )
 
 
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]

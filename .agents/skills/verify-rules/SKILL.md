@@ -47,8 +47,9 @@ python3 "$ROOT/.agents/skills/verify-rules/scripts/plant_violations.py" --plant
 ```
 
 The probe set is one file per mechanical rule: a `model/` module importing `@tanstack/react-query`;
-a `features/*/components/` view with `'use client'`; a barrel `index.ts`; an async `page.tsx` with
-no `loading.tsx`; a router importing `app.models`; a repository calling `.commit()`; a route with
+a `features/*/components/` view with `'use client'`; a feature hook calling
+`dialog.showModal()` (`feature-show-modal`, caught by `no-restricted-properties`); a barrel
+`index.ts`; an async `page.tsx` with no `loading.tsx`; a router importing `app.models`; a repository calling `.commit()`; a route with
 no auth dependency (the planter also registers it in `main.py`, since route contracts read the
 live app); and a service with no paired test module. `--probe <name>` plants a subset; each entry
 carries the `expected_failure` — the check that must catch it.

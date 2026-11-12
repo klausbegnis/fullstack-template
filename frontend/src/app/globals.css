@@ -2,6 +2,8 @@
 
 @theme {
   --color-brand: oklch(0.55 0.2 260);
+  --spacing-tab-bar: 4rem;
+  --spacing-tab-bar-clearance: calc(var(--spacing-tab-bar) + env(safe-area-inset-bottom));
 }
 
 body {

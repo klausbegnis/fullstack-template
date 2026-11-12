@@ -15,6 +15,7 @@ Stdlib only. Usage:
     python3 task_env.py status [--task <slug>]
     python3 task_env.py logs   --task <slug> [--service api] [-n 200]
     python3 task_env.py down   --task <slug> [--keep-state]
+    python3 task_env.py node   [--repo <path>]
 """
 
 import argparse
@@ -246,6 +247,55 @@ def require_docker():
         sys.exit("`docker compose` is unavailable; install the compose plugin")
 
 
+REPO_ROOT = Path(__file__).resolve().parents[4]
+NVMRC = Path("frontend") / ".nvmrc"
+NODE_FIX_HINT = "put a Node of that major first on PATH (for example with nvm use)"
+
+
+def node_major(version):
+    """Return the major number of a Node version such as ``22``, ``v22.1.0`` or ``22.x``."""
+    match = re.match(r"\s*v?(\d+)", version)
+    if not match:
+        raise ValueError("unreadable Node version %r" % version.strip())
+    return int(match.group(1))
+
+
+def required_node_major(repo):
+    """Return the Node major pinned in ``<repo>/frontend/.nvmrc``."""
+    return node_major((Path(repo) / NVMRC).read_text())
+
+
+def installed_node_version():
+    """Return ``node -v`` of the first ``node`` on PATH, or None when there is none."""
+    try:
+        result = subprocess.run(["node", "-v"], check=True, capture_output=True, text=True)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return result.stdout.strip()
+
+
+def node_mismatch(required, found):
+    """Return the one-line fix when ``found`` is not on the ``required`` major, else None."""
+    if found is not None and node_major(found) == required:
+        return None
+    return "Node %d required, found %s; %s" % (required, found or "no node on PATH", NODE_FIX_HINT)
+
+
+def cmd_node(args):
+    """Exit non-zero with a fix unless ``node`` on PATH matches the major in ``frontend/.nvmrc``.
+
+    ``engine-strict`` only stops installs; ``npm run`` and ``npx`` never check engines, so an
+    already-installed tree would otherwise run its tests under the wrong Node.
+    """
+    required = required_node_major(args.repo)
+    found = installed_node_version()
+    message = node_mismatch(required, found)
+    if message:
+        sys.exit(message)
+    print("node %s matches %s (%d)" % (found, NVMRC.as_posix(), required))
+    return 0
+
+
 def cmd_up(args):
     """Bring this task's stack up on its own project name and ports."""
     slug = validate_slug(args.task)
@@ -432,6 +482,10 @@ def build_parser():
     down.add_argument("--task", required=True)
     down.add_argument("--keep-state", action="store_true")
     down.set_defaults(func=cmd_down)
+
+    node = sub.add_parser("node", help="refuse when node on PATH is not the major pinned in frontend/.nvmrc")
+    node.add_argument("--repo", default=str(REPO_ROOT))
+    node.set_defaults(func=cmd_node)
 
     return parser
 

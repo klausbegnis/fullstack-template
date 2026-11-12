@@ -43,10 +43,10 @@ async def get_user(
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_user(
     payload: UserCreate,
-    _actor: RequireAdmin,
+    actor: RequireAdmin,
     service: UserServiceDep,
 ) -> SuccessResponse[UserRead]:
-    data = await service.create_user(payload)
+    data = await service.create_user(actor, payload)
     return SuccessResponse(message="User created", data=data)
 
 
@@ -64,10 +64,10 @@ async def update_user(
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def disable_user(
     user_id: uuid.UUID,
-    _actor: RequireAdmin,
+    actor: RequireAdmin,
     service: UserServiceDep,
 ) -> None:
-    await service.disable_user(user_id)
+    await service.disable_user(actor, user_id)
 
 
 __all__ = ["router"]

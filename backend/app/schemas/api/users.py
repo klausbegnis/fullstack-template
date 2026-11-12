@@ -6,17 +6,21 @@ import uuid
 from pydantic import BaseModel, Field
 
 from app.models.user import UserRole
+from app.schemas.api.names import DisplayName
+from app.schemas.api.passwords import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
 
 
 class UserCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=160)
+    name: DisplayName = Field(min_length=1, max_length=160)
     email: str = Field(min_length=3, max_length=320)
-    password: str = Field(min_length=1, max_length=1024)
+    password: str = Field(
+        min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH
+    )
     role: UserRole = UserRole.MEMBER
 
 
 class UserUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=160)
+    name: DisplayName | None = Field(default=None, min_length=1, max_length=160)
     email: str | None = Field(default=None, min_length=3, max_length=320)
     role: UserRole | None = None
 

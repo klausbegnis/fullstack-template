@@ -25,4 +25,14 @@ describe("LogoutButton", () => {
       expect(logoutAction).toHaveBeenCalled();
     });
   });
+
+  it("renders as a menu item for a menu", () => {
+    render(
+      <div role="menu" aria-label="Account">
+        <LogoutButton variant="menuitem" />
+      </div>,
+    );
+
+    expect(screen.getByRole("menuitem", { name: "Log out" })).toHaveAttribute("type", "submit");
+  });
 });

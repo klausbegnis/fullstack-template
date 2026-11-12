@@ -5,7 +5,7 @@ paths:
 
 Structural rules for the FastAPI application package: which layer may import what, how errors
 leave it, and the file-level conventions every module under `app/` follows. Persistence detail
-lives in `backend/persistence.md`, the CRUD recipe in `backend/api-crud.md`, the reasoning in
+lives in `backend/persistence.md`, logging in `backend/logging.md`, the CRUD recipe in `backend/api-crud.md`, the reasoning in
 `docs/architecture/backend.md`.
 
 ### Route every request through router, service, repository, model
@@ -213,11 +213,3 @@ holds more than one decision; extract a helper — a `# noqa` on these two codes
 answer.
 
 Enforced by: ruff: C901, ruff: PLR0915
-
-### Log through `app.core.logger`, never `print`
-
-`get_logger(__name__)` emits structured records that carry the `request_id` from the context
-var, so a line can be traced to the request that produced it. A `print` writes to stdout with
-no correlation and no level.
-
-Enforced by: ruff: T201
