@@ -23,9 +23,9 @@ body:
       label: Observed behaviour
       description: What actually happens, including error messages, status codes, and logs.
       placeholder: |
-        `POST /api/auth/login` with a wrong password returns `500 Internal Server
-        Error`. Backend log shows `AttributeError: 'NoneType' object has no
-        attribute 'verify'` in `app/services/auth.py`.
+        Example: `POST /api/auth/login` with a wrong password returns `500
+        Internal Server Error`, and the backend log shows the exception with
+        its `request_id`.
     validations:
       required: true
   - type: textarea
@@ -34,8 +34,8 @@ body:
       label: Expected behaviour
       description: What should happen instead, per the stated specification.
       placeholder: >-
-        Should return `401` with `APIException` code `invalid_credentials`, the
-        same response as when the user does not exist at all.
+        Example: should return `401` with code `unauthorized`, the same
+        response as when the user does not exist at all.
     validations:
       required: true
   - type: textarea
@@ -44,9 +44,10 @@ body:
       label: Reproduction
       description: Exact steps, request payloads, or a failing test that reproduces the issue every time.
       placeholder: |
-        1. `POST /api/auth/login` with `{"email": "existing@user.com", "password": "wrong"}`.
+        Example:
+        1. `POST /api/auth/login` with `{"email": "user@example.com", "password": "wrong"}`.
         2. Observe a 500 instead of a 401.
-        Reproduces on `main` at any commit after `a1b2c3d`.
+        Reproduces on `main` at commit `<sha>`.
     validations:
       required: true
   - type: textarea

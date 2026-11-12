@@ -4,6 +4,13 @@ updates:
     directories:
       - /backend
       - /frontend
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+      - dependency-name: python
+        update-types:
+          - version-update:semver-minor
     schedule:
       interval: weekly
     groups:
@@ -12,6 +19,10 @@ updates:
           - "*"
   - package-ecosystem: docker-compose
     directory: /
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     schedule:
       interval: weekly
     groups:
