@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
+import { AccountMenu } from "@/components/layout/account-menu";
 import { AppShell } from "@/components/layout/app-shell";
+import { navItems } from "@/components/layout/nav-items";
 import { LogoutButton } from "@/features/auth/containers/logout-button";
 import { SessionKeeper } from "@/features/auth/containers/session-keeper";
 import { readAccessExpiresAt } from "@/lib/auth/access-expiry";
@@ -22,8 +24,15 @@ export default async function AppLayout({ children }: AppLayoutProps) {
   const [user, accessExpiresAt] = await Promise.all([requireUser(), readAccessExpiresAt()]);
 
   return (
-    <AppShell productName="Fullstack Template" actions={<LogoutButton />}>
-      <p className="mb-4 text-sm text-gray-500">Signed in as {user.name}</p>
+    <AppShell
+      productName="Fullstack Template"
+      items={navItems}
+      accountMenu={
+        <AccountMenu userName={user.name} userEmail={user.email}>
+          <LogoutButton variant="menuitem" />
+        </AccountMenu>
+      }
+    >
       {children}
       <SessionKeeper accessExpiresAt={accessExpiresAt} />
     </AppShell>

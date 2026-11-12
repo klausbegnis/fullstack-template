@@ -15,7 +15,7 @@ describe("createUserSchema", () => {
     const result = createUserSchema.safeParse({
       name: "",
       email: "ada@example.com",
-      password: "secret",
+      password: "secret-passphrase",
     });
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.message).toBe("Name is required");
@@ -25,7 +25,7 @@ describe("createUserSchema", () => {
     const result = createUserSchema.safeParse({
       name: "Ada Lovelace",
       email: "not-an-email",
-      password: "secret",
+      password: "secret-passphrase",
     });
     expect(result.success).toBe(false);
   });

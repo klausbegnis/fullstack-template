@@ -2,19 +2,23 @@ import type { ReactNode } from "react";
 
 export interface HeaderProps {
   productName: string;
-  actions?: ReactNode;
+  accountMenu?: ReactNode;
+  menuButton?: ReactNode;
 }
 
 /**
- * The application's semantic `<header>`, rendered on the server. Any
- * interactive content, such as a user menu, is passed in as `actions` from
- * a feature that owns that behaviour.
+ * The application's semantic `<header>`: one compact row with the product name, the signed-in
+ * user's `accountMenu` and the phone-only `menuButton`. Interactive content arrives as slots from
+ * the shell and the layout, which own that behaviour.
  */
-export function Header({ productName, actions }: HeaderProps) {
+export function Header({ productName, accountMenu, menuButton }: HeaderProps) {
   return (
-    <header className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-      <span className="text-base font-semibold text-gray-900">{productName}</span>
-      {actions}
+    <header className="sticky top-0 z-50 flex h-16 items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 sm:px-6">
+      <span className="truncate text-base font-semibold text-gray-900">{productName}</span>
+      <div className="flex flex-none items-center gap-3">
+        {accountMenu}
+        {menuButton}
+      </div>
     </header>
   );
 }

@@ -12,7 +12,7 @@ and data live is in `frontend/data-and-forms.md`; the client boundary is in
 ### Keep component files props-only
 
 A view takes data and callbacks as props and renders them. It carries no `'use client'` and
-still renders on the server — "presentational" is not a reason to go client-side. No data
+stays server compatible — "presentational" is not a reason to go client-side. No data
 hooks, no `@tanstack/*`, no `next/navigation`: behaviour arrives from the container that owns
 it, which is also what makes the view testable by rendering it with plain props.
 
@@ -42,7 +42,41 @@ export function UsersListView({ users, status, canGoToNextPage, onNextPage }: Us
 }
 ```
 
-Enforced by: lint: no-restricted-syntax, lint: boundaries/external
+A feature view may hand a callback prop to an element (`onClick={onNextPage}`, or an arrow that
+only calls callback props); any other handler body is event behaviour and belongs to the
+container.
+
+Enforced by: lint: local/no-imperative-event-handlers, lint: no-restricted-syntax, lint: boundaries/external
+
+### Every overlay closes on outside click and Escape and returns focus
+
+A popup the user cannot dismiss by clicking away is a trap, and every hand-rolled copy of the
+open/close logic drifts. A modal is a native `<dialog>` rendered through `Dialog` and opened only
+by `useModalDialog` from `components/ui/use-modal-dialog.ts`: Escape, the native cancel and a
+pointer on the backdrop call `onClose`, `initialFocus` places focus on open, and focus returns to
+the trigger on close. A non-modal panel, popover or dropdown takes its ref from
+`useDismissiblePanel` (Escape and a pointer outside the panel and its trigger dismiss it). A
+feature that needs more (per-step focus) wraps the primitive instead of calling `showModal()`
+itself. A full-screen dialog has no backdrop to click and keeps Escape plus a visible close
+button. Clicking outside an editor with unsaved changes is the same as its close button; a close
+the container refuses while a save is pending stays refused, because the guard lives in `onClose`.
+
+**Incorrect:**
+
+```tsx
+useEffect(() => {
+  if (open) dialogRef.current?.showModal();
+}, [open]);
+```
+
+**Correct:**
+
+```tsx
+const dialogRef = useModalDialog(open, close, { initialFocus: "button, a[href]" });
+return <Dialog dialogRef={dialogRef} title="Edit item" onClose={close}>{/* ... */}</Dialog>;
+```
+
+Enforced by: lint: no-restricted-properties (showModal outside components/ui), frontend/src/components/ui/use-modal-dialog.test.tsx, frontend/src/components/ui/use-dismissible-panel.test.tsx
 
 ### Express async state as a discriminated `status` prop
 
