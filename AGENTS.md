@@ -25,9 +25,7 @@ when you touch matching files. `CLAUDE.md` files are one line, `@AGENTS.md`, eve
 | — | — | Node.js | 22 (`frontend/.nvmrc`, `engines.node: 22.x` with `engine-strict`; CI uses 22) |
 
 Backend uses `uv`; frontend uses `npm` (`package-lock.json` committed). eslint is pinned to
-`9.39.5` exactly — `eslint-config-next@16.4.6` breaks on ESLint 10. `overrides` in
-`frontend/package.json` pin patched versions of vulnerable transitive packages
-(see `docs/development/dependencies.md`).
+`9.39.5` exactly — `eslint-config-next@16.4.6` breaks on ESLint 10.
 
 ## Rules index — read the matching file before editing
 
@@ -38,7 +36,7 @@ file yourself before editing (the PostToolUse hook also injects the matching rul
 | Rule file | Loads for |
 |---|---|
 | `.agents/rules/backend/layering.md` | `backend/app/**` — router → service → repository → model, DI aliases, envelopes, `APIException` only, `async def` everywhere |
-| `.agents/rules/backend/logging.md` | `backend/app/**` — `get_logger` only, constant messages with data in `extra`, no secrets or personal data, which layer logs |
+| `.agents/rules/backend/logging.md` | `backend/app/**` — `get_logger`, constant messages, data in `extra`, no secrets/PII |
 | `.agents/rules/backend/persistence.md` | `backend/app/models/**`, `backend/app/repositories/**`, `backend/alembic/**` — schema pins, naming convention, `.flush()` only, migrations |
 | `.agents/rules/backend/api-crud.md` | `backend/app/{routers,schemas,services,dependencies}/**` — the CRUD recipe: auth dep per route, return annotations, status codes, transaction boundary, contract sync |
 | `.agents/rules/backend/testing.md` | `backend/tests/**` — two tiers, fakes over mocks, one test module per service and router |
