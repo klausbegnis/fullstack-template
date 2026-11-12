@@ -125,10 +125,10 @@ entire integration tier.** In this checkout that is the difference between:
 
 | `DATABASE_URL` | Result | What actually ran |
 |---|---|---|
-| unset | `180 passed, 24 skipped` | unit tier only; exit code 0 |
-| set to a reachable Postgres 16 | `204 passed` | unit tier plus the 24 integration tests |
+| unset | `877 passed, 78 skipped` | unit tier only; exit code 0 |
+| set to a reachable Postgres 16 | `955 passed` | unit tier plus the 78 integration tests |
 
-The absolute totals move every time someone adds a test. The gap does not: those 24 tests are
+The absolute totals move every time someone adds a test. The gap does not: those 78 tests are
 the only ones that exercise a real database, a real session, and the real error contract.
 
 A skip is not a pass. Before opening or approving a PR that touches `backend/`, run the full

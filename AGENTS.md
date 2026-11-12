@@ -9,23 +9,25 @@ when you touch matching files. `CLAUDE.md` files are one line, `@AGENTS.md`, eve
 
 | Backend | Version | Frontend | Version |
 |---|---|---|---|
-| Python | 3.12 | Next.js | 16.3.5 (Turbopack) |
+| Python | 3.12 | Next.js | 16.4.6 (Turbopack) |
 | FastAPI | 0.141.1 | React / react-dom | 19.2.0 |
 | SQLAlchemy (async) | 2.0.54 | TypeScript (strict) | 5.9.3 |
 | asyncpg | 0.31.0 | Tailwind CSS | 4.1.11 (CSS-first, no `tailwind.config.*`) |
 | Alembic | 1.20.0 | @tanstack/react-query | 5.103.1 |
 | pydantic / pydantic-settings | 2.13.5 / 2.15.0 | zustand | 5.0.11 |
-| PyJWT | 2.14.0 | react-hook-form / zod / @hookform/resolvers | 7.88.0 / 4.6.5 / 5.9.1 |
+| PyJWT | 2.15.1 | react-hook-form / zod / @hookform/resolvers | 7.88.0 / 4.6.7 / 5.9.1 |
 | argon2-cffi | 25.1.0 | orval | 8.34.0 |
 | uvicorn | 0.53.0 | vitest / @vitest/coverage-v8 | 4.1.11 |
-| ruff | 0.16.8 | eslint / eslint-config-next | 9.39.5 / 16.3.5 |
-| mypy (strict) | 2.3.1 | eslint-plugin-boundaries | 7.2.0 |
-| pytest | 9.1.1 | eslint-plugin-use-client | 1.2.0 |
+| ruff | 0.16.8 | eslint / eslint-config-next | 9.39.5 / 16.4.6 |
+| mypy (strict) | 2.3.1 | eslint-plugin-boundaries | 7.4.3 |
+| pytest / pytest-xdist | 9.1.1 / 3.8.0 | eslint-plugin-use-client | 1.2.0 |
 | PostgreSQL | 16 | prettier | 3.5.3 |
 | — | — | Node.js | 22 (`frontend/.nvmrc`, `engines.node: 22.x` with `engine-strict`; CI uses 22) |
 
 Backend uses `uv`; frontend uses `npm` (`package-lock.json` committed). eslint is pinned to
-`9.39.5` exactly — `eslint-config-next@16.3.5` breaks on ESLint 10.
+`9.39.5` exactly — `eslint-config-next@16.4.6` breaks on ESLint 10. `overrides` in
+`frontend/package.json` pin patched versions of vulnerable transitive packages
+(see `docs/development/dependencies.md`).
 
 ## Rules index — read the matching file before editing
 
