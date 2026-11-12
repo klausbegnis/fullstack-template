@@ -189,6 +189,35 @@ loudly instead of persisting one. `user_id` deliberately has no foreign key: the
 the account it describes. There is no read API; query the table directly or build an admin
 endpoint on `SecurityEventRepository`.
 
+## Unhandled-error alerts
+
+`general_exception_handler` still returns the same sanitized 500, but when the process reports
+alerts it also captures an `ErrorAlert` (`app/core/error_alerts.py`) and hands it to the reporter
+on `app.state.error_alerts` as the response's background task, so delivery happens after the
+body is sent and can never change it. `APIException`s and validation errors never alert.
+
+- **Scrubbing.** The alert names the route by its template (`/users/{user_id}`, never the raw
+  path), carries only the request id and the signed-in user's id (`request.state.user_id`, set by
+  `get_current_user`), and renders the traceback from frame summaries alone — file, line,
+  function, source line; never locals, headers, cookies, query or body. The exception message is
+  cut before any `[SQL:`, `[parameters:` or `DETAIL:` marker, emails, phone-like digit runs and
+  token-like strings are replaced, and it is capped at 300 characters.
+- **Throttle** (`app/core/error_alert_throttle.py`, per process). The first occurrence of a
+  fingerprint (exception class + route + innermost `app/` frame) is delivered; repeats within
+  `ERROR_ALERT_REPEAT_WINDOW_SECONDS` (600) are counted and summarised once when the window
+  closes. At most `ERROR_ALERT_MAX_POSTS_PER_HOUR` (20) deliveries per hour; the excess is
+  dropped and reported in one notice when the hour turns.
+- **Pluggable sink** (`app/core/error_alert_sinks.py`). `ErrorAlertSink` is a one-method
+  Protocol (`async deliver(notification)`). `LoggingErrorAlertSink`, the default, writes one
+  structured `error alert: ...` record. Setting `ERROR_ALERT_WEBHOOK_URL` selects
+  `WebhookErrorAlertSink`, which POSTs `{"text": "<plain-text rendering>"}` — exactly the body a
+  Slack incoming webhook accepts, and easy for any other receiver to consume. A failed delivery
+  logs one `error alert not delivered` warning naming only the error type, never the URL. Another
+  destination is a new class with a `deliver` method passed to `build_error_alert_reporter`.
+
+Reporting is on only under `ENVIRONMENT=production`; in development the traceback in the console
+is the alert. The reporter's pending flush task is cancelled in the lifespan shutdown.
+
 ## Enforcement mechanisms (why the rules above are real)
 
 - `tests/unit/architecture/` is discovery-based, so a new feature is covered without a new test

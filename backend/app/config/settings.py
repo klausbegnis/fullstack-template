@@ -73,6 +73,30 @@ class Settings(BaseSettings):
     RATE_LIMIT_LOGIN_PER_IP: int = Field(default=50, ge=1)
     RATE_LIMIT_LOGIN_WINDOW_SECONDS: int = Field(default=900, ge=1)
 
+    ERROR_ALERT_WEBHOOK_URL: SecretStr = Field(
+        default=SecretStr(""),
+        description=(
+            'Webhook that receives unhandled-error alerts as JSON {"text": ...}, '
+            "such as a Slack incoming webhook; empty logs the alerts instead"
+        ),
+    )
+    ERROR_ALERT_REPEAT_WINDOW_SECONDS: int = Field(
+        default=600,
+        gt=0,
+        description=(
+            "Seconds a delivered error alert absorbs identical repeats before one "
+            "summary with their count is delivered"
+        ),
+    )
+    ERROR_ALERT_MAX_POSTS_PER_HOUR: int = Field(
+        default=20,
+        gt=0,
+        description=(
+            "Most error alert deliveries per process per hour; the excess is "
+            "dropped and counted in one notice"
+        ),
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

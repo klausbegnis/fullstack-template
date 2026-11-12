@@ -4,7 +4,9 @@ from typing import Any
 from fastapi import Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.background import BackgroundTask
 
+from app.core.error_alerts import ErrorAlertReporting, capture_error_alert
 from app.core.logger import get_logger
 from app.core.middleware import REQUEST_ID_HEADER
 from app.schemas.api import ErrorDetail, ErrorResponse
@@ -217,7 +219,11 @@ def validation_exception_handler(
 
 
 def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Convert an unhandled exception into a safe internal-error response."""
+    """Convert an unhandled exception into a safe internal-error response.
+
+    When the process reports alerts, the alert is captured here and delivered
+    as the response's background task, after the unchanged 500 body is sent.
+    """
     request_id = _request_id_of(request)
     logger.error(
         "Unhandled exception: %s",
@@ -226,9 +232,32 @@ def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         extra={"request_id": request_id},
     )
 
-    return _error_response(
+    response = _error_response(
         status.HTTP_500_INTERNAL_SERVER_ERROR,
         "internal_error",
         "An internal error occurred",
         request_id=request_id,
     )
+    response.background = _error_alert_task(request, exc)
+    return response
+
+
+def _error_alert_task(request: Request, exc: Exception) -> BackgroundTask | None:
+    """Capture the alert for `exc` as a task, or `None` when reporting is off."""
+    reporter: ErrorAlertReporting | None = getattr(
+        request.app.state, "error_alerts", None
+    )
+    if reporter is None or not reporter.enabled:
+        return None
+    try:
+        alert = capture_error_alert(request, exc, reporter.now())
+    except Exception as capture_error:
+        logger.warning(
+            "error alert not captured",
+            extra={
+                "request_id": _request_id_of(request),
+                "error_type": type(capture_error).__name__,
+            },
+        )
+        return None
+    return BackgroundTask(reporter.report, alert)
