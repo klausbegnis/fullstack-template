@@ -6,7 +6,7 @@ describe("createUserSchema", () => {
     const result = createUserSchema.parse({
       name: "Ada Lovelace",
       email: "ada@example.com",
-      password: "secret",
+      password: "secret-passphrase",
     });
     expect(result.role).toBe("member");
   });
