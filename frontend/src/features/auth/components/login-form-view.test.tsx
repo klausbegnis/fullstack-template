@@ -8,11 +8,12 @@ import type { LoginInput } from "@/features/auth/model/login-schema";
 
 interface HarnessProps {
   formError: string | null;
+  sessionExpired?: boolean;
   isSubmitting: boolean;
   onSubmit: () => void;
 }
 
-function Harness({ formError, isSubmitting, onSubmit }: HarnessProps) {
+function Harness({ formError, sessionExpired, isSubmitting, onSubmit }: HarnessProps) {
   const form = useForm<LoginInput>({ defaultValues: { email: "", password: "" } });
 
   const handleSubmit: FormEventHandler<HTMLFormElement> = (event) => {
@@ -25,6 +26,7 @@ function Harness({ formError, isSubmitting, onSubmit }: HarnessProps) {
       register={form.register}
       errors={form.formState.errors}
       formError={formError}
+      sessionExpired={sessionExpired}
       isSubmitting={isSubmitting}
       onSubmit={handleSubmit}
     />
@@ -50,5 +52,16 @@ describe("LoginFormView", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("Invalid email or password");
     expect(screen.getByRole("button", { name: "Signing in…" })).toBeDisabled();
+  });
+
+  it("tells the visitor only when the session expired on its own", () => {
+    const { rerender } = render(
+      <Harness formError={null} isSubmitting={false} onSubmit={vi.fn()} />,
+    );
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    rerender(<Harness formError={null} sessionExpired isSubmitting={false} onSubmit={vi.fn()} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Your session expired. Sign in again.");
   });
 });

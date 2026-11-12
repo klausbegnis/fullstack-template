@@ -94,9 +94,34 @@ httpOnly, `SameSite=Lax` cookies: `app_access` (path `/`), `app_refresh` (path `
 — it is a UX optimization, not the authorization boundary (CVE-2025-29927: middleware can be
 bypassed). The actual gate is `src/lib/auth/dal.ts`: `import "server-only"` plus React `cache()`
 around `getCurrentUser()`, which calls `GET /auth/me` forwarding cookies and treats a 401/403 as
-"no session" rather than an error. `requireUser()` wraps it with a `redirect("/login")`. Every
+"no session" rather than an error. `requireUser()` wraps it with a redirect (through
+`/api/auth/renew` while a session may still be renewable, otherwise to `/login`). Every
 protected layout or sensitive Server Action must call one of these, not just rely on middleware
 having run.
+
+Sessions renew before `app_access` lapses. `features/auth/containers/session-keeper.tsx`, mounted
+by the `(app)` layout with the access token's `exp` (decoded server-side by
+`lib/auth/access-expiry.ts`, for scheduling only), calls `refreshSession()`
+(`lib/auth/refresh-session.ts`) two minutes before expiry (±15 s; halfway for a short TTL) and again
+when the tab returns near expiry. `refreshSession()` is single-flight per tab, serialised across tabs
+by the Web Locks API, skips the call when another tab already rotated `app_csrf`, and announces the
+result on the `auth` BroadcastChannel. The mutator retries any request once after a 401 (never the
+`/auth/refresh|login|logout` calls) with freshly read CSRF. A navigation that arrives without
+`app_access` but with `app_csrf` goes through the `/api/auth/renew` Route Handler (middleware, or
+`requireUser()` on a 401), which refreshes server-side with this site's origin as `Origin`, forwards
+the rotated cookies, sets the 10 s `app_renewed` loop guard and returns to the same path; it only
+serves same-origin or address-bar navigations (`Sec-Fetch-Site`). The backend answers a refresh
+token rotated less than `AUTH_REFRESH_GRACE_SECONDS` ago, whose successor is unused, with 401
+`refresh_superseded` and keeps the session, so two tabs racing past expiry do not trip replay
+revocation. A session unused for `AUTH_SESSION_IDLE_TTL_SECONDS` (14 days) ends on its own, and an
+ended session lands on `/login?next=…&reason=expired`.
+
+Pages ship a nonce-based Content-Security-Policy. The middleware creates a nonce per request
+(`lib/security/content-security-policy.ts`) and sets the policy on the response and on the request
+headers; the root layout reads the nonce (`lib/security/request-nonce.ts`), which renders every page
+per request so Next.js stamps the nonce on its scripts. Production allows scripts only through the
+nonce plus `'strict-dynamic'`; `next dev` adds `'unsafe-eval'`. `instrumentation-client.ts` switches
+zod to its jitless parsers so it never probes `new Function`.
 
 ## Forms
 

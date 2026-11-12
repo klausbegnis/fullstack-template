@@ -65,6 +65,7 @@ the `## Code Review Rules` Codex applies per changed file in PR review.
   `app_csrf` for double-submit CSRF. Never `localStorage`/`sessionStorage`. `frontend/src/middleware.ts`
   (`proxy.ts` in Next 16.3+) is a cookie-presence redirect, not the authorization boundary
   (CVE-2025-29927); the gate is `frontend/src/lib/auth/dal.ts` (`requireUser()`/`getCurrentUser()`).
+  `/api/auth/renew` is a reserved Next Route Handler, not proxied to the API.
 - **`'use client'` only where a client-only feature is genuinely used** — code crosses through
   imports, data crosses through props. `features/*/components/` render on the server.
 - **Never edit a migration that is on `main`; never hand-edit `frontend/src/lib/api/generated/`.**
