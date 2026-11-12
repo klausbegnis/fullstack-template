@@ -126,3 +126,17 @@ def test_build_selects_the_sink_from_the_url() -> None:
 def test_build_refuses_a_url_that_is_not_http() -> None:
     with pytest.raises(ValueError, match="http"):
         build_error_alert_sink(SecretStr("ftp://hooks.example.test/x"))
+
+
+def test_text_escapes_chat_markup_from_the_exception() -> None:
+    notification = AlertNotification(
+        severity="error",
+        title="ValueError <!channel> & <@U123>",
+        environment="production",
+        occurred_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    text = notification.as_text()
+
+    assert "<!channel>" not in text
+    assert "&lt;!channel&gt; &amp; &lt;@U123&gt;" in text

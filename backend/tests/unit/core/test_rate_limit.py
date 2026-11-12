@@ -6,6 +6,7 @@ import pytest
 from app.config import Settings
 from app.core.rate_limit import (
     RateLimitPolicy,
+    canonical_client_address,
     client_ip,
     ensure_known_scope,
     policy_for,
@@ -123,10 +124,34 @@ def test_client_ip_falls_back_when_the_header_is_not_one_address(value: str) -> 
     )
 
 
-def test_client_ip_accepts_an_ipv6_header_value() -> None:
+def test_client_ip_buckets_an_ipv6_header_value_by_its_64() -> None:
     request = _request(real_ip=" 2001:db8::1 ")
 
     assert (
         client_ip(request, trust_forwarded=False, client_ip_header="X-Real-IP")
-        == "2001:db8::1"
+        == "2001:db8::/64"
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("203.0.113.7", "203.0.113.7"),
+        (" 203.0.113.7 ", "203.0.113.7"),
+        ("::ffff:203.0.113.7", "203.0.113.7"),
+        ("2001:db8:0:0:1:2:3:4", "2001:db8::/64"),
+        ("2001:0db8::9", "2001:db8::/64"),
+        ("not-an-ip", None),
+        ("", None),
+    ],
+)
+def test_canonical_client_address(value: str, expected: str | None) -> None:
+    assert canonical_client_address(value) == expected
+
+
+def test_a_forged_forwarded_entry_falls_back_to_the_peer() -> None:
+    request = _request(forwarded_for="not-an-address")
+
+    assert (
+        client_ip(request, trust_forwarded=True, client_ip_header="") == "203.0.113.7"
     )

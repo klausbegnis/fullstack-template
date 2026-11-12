@@ -7,7 +7,7 @@ from app.config import settings
 from app.core.clock import utc_now
 from app.core.database import create_engine, create_session_factory
 from app.repositories.rate_limit_windows import RateLimitWindowRepository
-from app.services.rate_limits import RateLimitService
+from app.services.rate_limits import RateLimitService, digest_key
 
 
 async def run(*, limit: int = 500, dry_run: bool = False) -> int:
@@ -22,6 +22,7 @@ async def run(*, limit: int = 500, dry_run: bool = False) -> int:
                 session=session,
                 windows=RateLimitWindowRepository(session),
                 clock=utc_now,
+                key=digest_key(settings.AUTH_JWT_SECRET.get_secret_value()),
             )
             return await service.purge_expired(limit=limit, dry_run=dry_run)
     finally:

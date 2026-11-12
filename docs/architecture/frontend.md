@@ -113,7 +113,10 @@ the rotated cookies, sets the 10 s `app_renewed` loop guard and returns to the s
 serves same-origin or address-bar navigations (`Sec-Fetch-Site`). The backend answers a refresh
 token rotated less than `AUTH_REFRESH_GRACE_SECONDS` ago, whose successor is unused, with 401
 `refresh_superseded` and keeps the session, so two tabs racing past expiry do not trip replay
-revocation. A session unused for `AUTH_SESSION_IDLE_TTL_SECONDS` (14 days) ends on its own, and an
+revocation. The trade-off is deliberate: a stolen refresh token replayed inside that window is
+refused but does not revoke the session, and a third rotation that consumes the successor before a
+slow sibling arrives turns the sibling's request into a replay that logs the user out. Keep the
+grace window short. A session unused for `AUTH_SESSION_IDLE_TTL_SECONDS` (14 days) ends on its own, and an
 ended session lands on `/login?next=…&reason=expired`.
 
 Pages ship a nonce-based Content-Security-Policy. The middleware creates a nonce per request

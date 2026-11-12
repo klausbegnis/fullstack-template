@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-import hashlib
 import os
 import uuid
 
@@ -23,18 +22,22 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.config import Settings, get_settings
+from app.config import Settings, get_settings, settings
 from app.core.database import create_session_factory
+from app.core.rate_limit import UNKNOWN_CLIENT
 from app.core.security import hash_password
 from app.dependencies import get_clock, get_rate_limit_counter
 from app.main import app
 from app.models.rate_limit_window import RateLimitWindow
 from app.models.user import UserRole
 from app.repositories.users import UserRepository
+from app.services.rate_limits import digest_key, subject_digest
 from tests.support.browser import BROWSER_HEADERS
 
+KEY = digest_key(settings.AUTH_JWT_SECRET.get_secret_value())
+
 PASSWORD = "Correct horse battery staple 123!"
-TEST_CLIENT_IP = "testclient"
+TEST_CLIENT_IP = UNKNOWN_CLIENT
 LOGIN_WINDOW = timedelta(seconds=900)
 
 
@@ -140,14 +143,8 @@ def test_windows_store_only_digests_never_the_email_or_ip(email: str) -> None:
     windows = _windows()
 
     assert sorted(windows) == ["login:ip", "login:subject"]
-    assert (
-        windows["login:subject"].subject_digest
-        == hashlib.sha256(email.encode()).digest()
-    )
-    assert (
-        windows["login:ip"].subject_digest
-        == hashlib.sha256(TEST_CLIENT_IP.encode()).digest()
-    )
+    assert windows["login:subject"].subject_digest == subject_digest(email, KEY)
+    assert windows["login:ip"].subject_digest == subject_digest(TEST_CLIENT_IP, KEY)
     for row in windows.values():
         stored = repr(
             (row.scope, row.subject_digest, row.resets_at, row.hits)

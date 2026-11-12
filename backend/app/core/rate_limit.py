@@ -53,30 +53,45 @@ def policy_for(scope: str, config: Settings) -> RateLimitPolicy:
     return _POLICIES[ensure_known_scope(scope)](config)
 
 
+IPV6_BUCKET_PREFIX = 64
+
+
 def client_ip(request: Request, *, trust_forwarded: bool, client_ip_header: str) -> str:
-    """Return the client address, honoring proxy headers only when configured.
+    """Return the canonical client address, honoring proxy headers only when configured.
 
     `client_ip_header` names a header the edge proxy overwrites with the peer it
     saw; it wins when it holds a valid IP address. Otherwise the right-most
-    `X-Forwarded-For` entry is used when trusted, and then the socket peer.
+    `X-Forwarded-For` entry is used when trusted and valid, and then the socket
+    peer. Every candidate is parsed, so two spellings of one address share a
+    bucket, and an IPv6 address is reduced to its /64, the block one host
+    usually controls.
     """
+    candidates: list[str] = []
     if client_ip_header:
-        candidate = request.headers.get(client_ip_header, "").strip()
-        if _is_ip_address(candidate):
-            return candidate
+        candidates.append(request.headers.get(client_ip_header, ""))
     if trust_forwarded:
         forwarded = request.headers.get(FORWARDED_FOR_HEADER, "")
         hops = [hop.strip() for hop in forwarded.split(",") if hop.strip()]
         if hops:
-            return hops[-1]
-    if request.client is not None and request.client.host:
-        return request.client.host
+            candidates.append(hops[-1])
+    if request.client is not None:
+        candidates.append(request.client.host or "")
+    for candidate in candidates:
+        canonical = canonical_client_address(candidate)
+        if canonical is not None:
+            return canonical
     return UNKNOWN_CLIENT
 
 
-def _is_ip_address(value: str) -> bool:
+def canonical_client_address(value: str) -> str | None:
+    """Return the canonical rate-limit key of an address, or None when it is not one."""
     try:
-        ipaddress.ip_address(value)
+        address = ipaddress.ip_address(value.strip())
     except ValueError:
-        return False
-    return True
+        return None
+    if isinstance(address, ipaddress.IPv6Address):
+        if address.ipv4_mapped is not None:
+            return address.ipv4_mapped.compressed
+        network = ipaddress.IPv6Network((address, IPV6_BUCKET_PREFIX), strict=False)
+        return network.compressed
+    return address.compressed

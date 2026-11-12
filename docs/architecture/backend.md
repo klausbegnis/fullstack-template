@@ -146,7 +146,12 @@ The counters are fixed windows in `iam.rate_limit_windows`, shared by every work
 restarts. A hit is one atomic `INSERT ... ON CONFLICT DO UPDATE` (`RateLimitWindowRepository.hit`)
 that restarts an ended window at 1, committed by `RateLimitService` on a short session of its own
 (`request_session_factory`), so a hit still counts when the login later fails and rolls the
-request session back. Only the SHA-256 digest of the email or IP is stored.
+request session back. Only an HMAC-SHA256 of the email or IP is stored, keyed with a key derived
+from `AUTH_JWT_SECRET`, so a read of the table cannot recover addresses by hashing candidates
+(rotating the secret simply starts fresh windows). Client addresses are parsed before they are
+keyed: two spellings of one address share a bucket, an IPv4-mapped IPv6 address counts as its
+IPv4 address, an IPv6 address is bucketed by its /64, and a header value that is not an address
+falls back to the next candidate.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -157,9 +162,13 @@ request session back. Only the SHA-256 digest of the email or IP is stored.
 | `RATE_LIMIT_CLIENT_IP_HEADER` | empty | header a trusted edge proxy overwrites (e.g. `X-Real-IP`); wins over `X-Forwarded-For` |
 
 Behind the Next.js server the API sees the frontend container as the peer, so the login Server
-Action forwards the browser's `X-Forwarded-For` (`frontend/src/lib/auth/forwarded-headers.ts`);
-enable `RATE_LIMIT_TRUST_FORWARDED` only when every request reaches the API through a proxy that
-sets that header. Ended windows are deleted by
+Action forwards the incoming `X-Real-IP` and `X-Forwarded-For` (`frontend/src/lib/auth/forwarded-headers.ts`).
+The production deploy (`docs/deploy/vps.md`) has Caddy overwrite `X-Real-IP` and sets
+`RATE_LIMIT_CLIENT_IP_HEADER=X-Real-IP`. The local `docker-compose.yml` has no edge proxy, so
+there every login shares one per-IP bucket (the per-email limit still applies); that is fine on a
+laptop and wrong for anything shared. Enable `RATE_LIMIT_TRUST_FORWARDED` only when every request
+reaches the API through a proxy that appends the real peer to that header, and never expose the
+API directly while either setting is on: the client could then name any address. Ended windows are deleted by
 `uv run python -m app.commands.purge_rate_limit_windows [--limit N] [--dry-run]` (default limit 500;
 prints the count); schedule it hourly. A new throttled route adds its policy to `_POLICIES` in
 `app/core/rate_limit.py` — an unknown scope fails at import time.

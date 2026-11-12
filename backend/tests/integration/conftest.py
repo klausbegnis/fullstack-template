@@ -21,11 +21,13 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from app.config import settings
 from app.core.database import SessionFactory, create_session_factory
 from app.dependencies import ClockDep, get_rate_limit_counter
 from app.dependencies.rate_limit import RateLimitCounter, SharedWindowCounter
 from app.main import app
 from app.models.rate_limit_window import RateLimitWindow
+from app.services.rate_limits import digest_key
 
 TIER_ROOT = Path(__file__).parent
 REQUIRES_DATABASE = pytest.mark.skipif(
@@ -60,7 +62,11 @@ async def _delete_rate_limit_windows(engine: AsyncEngine) -> None:
 
 def _counter_on(factory: SessionFactory) -> Callable[..., RateLimitCounter]:
     def counter(clock: ClockDep) -> RateLimitCounter:
-        return SharedWindowCounter(lambda: factory, clock)
+        return SharedWindowCounter(
+            lambda: factory,
+            clock,
+            digest_key(settings.AUTH_JWT_SECRET.get_secret_value()),
+        )
 
     return counter
 

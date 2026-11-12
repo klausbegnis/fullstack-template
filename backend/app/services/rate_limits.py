@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 import hashlib
+import hmac
 import math
 from typing import Protocol
 
@@ -35,9 +36,21 @@ class RateLimitWindowStore(Protocol):
     async def delete_expired(self, *, before: datetime, limit: int) -> int: ...
 
 
-def subject_digest(subject: str) -> bytes:
-    """Return the 32-byte SHA-256 digest stored in place of the plain subject."""
-    return hashlib.sha256(subject.encode()).digest()
+DIGEST_KEY_CONTEXT = b"rate-limit-subject:"
+
+
+def digest_key(secret: str) -> bytes:
+    """Derive the HMAC key for subject digests from a server secret."""
+    return hashlib.sha256(DIGEST_KEY_CONTEXT + secret.encode()).digest()
+
+
+def subject_digest(subject: str, key: bytes) -> bytes:
+    """Return the 32-byte HMAC-SHA256 stored in place of the plain subject.
+
+    Keyed with a server secret, so a read of the table cannot recover an email
+    or an IPv4 address by hashing candidates.
+    """
+    return hmac.new(key, subject.encode(), hashlib.sha256).digest()
 
 
 class RateLimitService:
@@ -49,10 +62,12 @@ class RateLimitService:
         session: AsyncSession,
         windows: RateLimitWindowStore,
         clock: Clock,
+        key: bytes,
     ) -> None:
         self._session = session
         self._windows = windows
         self._clock = clock
+        self._key = key
 
     async def hit(
         self, scope: str, subject: str, *, limit: int, window_seconds: int
@@ -62,7 +77,7 @@ class RateLimitService:
         async with transaction(self._session):
             count = await self._windows.hit(
                 scope,
-                subject_digest(subject),
+                subject_digest(subject, self._key),
                 now=now,
                 window=timedelta(seconds=window_seconds),
             )
@@ -79,4 +94,9 @@ class RateLimitService:
             return await self._windows.delete_expired(before=before, limit=limit)
 
 
-__all__ = ["RateLimitService", "RateLimitWindowStore", "subject_digest"]
+__all__ = [
+    "RateLimitService",
+    "RateLimitWindowStore",
+    "digest_key",
+    "subject_digest",
+]

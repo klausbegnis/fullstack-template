@@ -15,7 +15,7 @@ from app.core.exceptions import TooManyRequestsException
 from app.core.rate_limit import client_ip, ensure_known_scope, policy_for
 from app.repositories.rate_limit_windows import RateLimitWindowRepository
 from app.repositories.users import normalize_email
-from app.services.rate_limits import RateLimitService
+from app.services.rate_limits import RateLimitService, digest_key
 
 from .clock import ClockDep
 
@@ -39,9 +39,12 @@ class SharedWindowCounter:
     so a disabled limiter needs no database.
     """
 
-    def __init__(self, sessions: Callable[[], SessionFactory], clock: Clock) -> None:
+    def __init__(
+        self, sessions: Callable[[], SessionFactory], clock: Clock, key: bytes
+    ) -> None:
         self._sessions = sessions
         self._clock = clock
+        self._key = key
 
     async def hit(
         self, scope: str, subject: str, *, limit: int, window_seconds: int
@@ -51,15 +54,22 @@ class SharedWindowCounter:
                 session=session,
                 windows=RateLimitWindowRepository(session),
                 clock=self._clock,
+                key=self._key,
             )
             return await service.hit(
                 scope, subject, limit=limit, window_seconds=window_seconds
             )
 
 
-def get_rate_limit_counter(request: Request, clock: ClockDep) -> RateLimitCounter:
+def get_rate_limit_counter(
+    request: Request, clock: ClockDep, config: SettingsDep
+) -> RateLimitCounter:
     """Return the counter backed by the shared `iam.rate_limit_windows` table."""
-    return SharedWindowCounter(lambda: request_session_factory(request), clock)
+    return SharedWindowCounter(
+        lambda: request_session_factory(request),
+        clock,
+        digest_key(config.AUTH_JWT_SECRET.get_secret_value()),
+    )
 
 
 RateLimitCounterDep = Annotated[RateLimitCounter, Depends(get_rate_limit_counter)]

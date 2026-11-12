@@ -15,7 +15,9 @@ import math
 import time
 
 from app.repositories.rate_limit_windows import WindowCount
-from app.services.rate_limits import subject_digest
+from app.services.rate_limits import digest_key, subject_digest
+
+FAKE_DIGEST_KEY = digest_key("fake-rate-limit-secret")
 
 
 @dataclass
@@ -40,7 +42,7 @@ class InMemoryRateLimitCounter:
         self, scope: str, subject: str, *, limit: int, window_seconds: int
     ) -> int | None:
         now = self._clock()
-        key = (scope, subject_digest(subject))
+        key = (scope, subject_digest(subject, FAKE_DIGEST_KEY))
         window = self.windows.get(key)
         if window is None or window.resets_at <= now:
             window = _Window(resets_at=now + window_seconds, hits=0)

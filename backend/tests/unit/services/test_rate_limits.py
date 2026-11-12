@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-import hashlib
 
-from app.services.rate_limits import RateLimitService, subject_digest
+from app.services.rate_limits import RateLimitService, digest_key, subject_digest
 from tests.support.fakes import FakeSession
 from tests.support.rate_limit_fakes import FakeRateLimitWindowStore, StoredWindow
+
+KEY = digest_key("unit-test-secret")
 
 START = datetime(2026, 10, 28, 12, 0, tzinfo=UTC)
 
@@ -31,6 +32,7 @@ def _service(
         session=session,  # type: ignore[arg-type]
         windows=store,
         clock=clock,
+        key=KEY,
     )
     return service, session
 
@@ -84,7 +86,7 @@ def test_each_hit_commits_its_own_transaction() -> None:
     assert (session.commits, session.rollbacks) == (2, 0)
 
 
-def test_the_store_receives_the_sha256_digest_never_the_subject() -> None:
+def test_the_store_receives_the_keyed_digest_never_the_subject() -> None:
     store = FakeRateLimitWindowStore()
     service, _ = _service(store, MovableClock())
 
@@ -92,9 +94,9 @@ def test_the_store_receives_the_sha256_digest_never_the_subject() -> None:
         service.hit("login:subject", "member@example.test", limit=5, window_seconds=60)
     )
 
-    expected = hashlib.sha256(b"member@example.test").digest()
+    expected = subject_digest("member@example.test", KEY)
     assert list(store.windows) == [("login:subject", expected)]
-    assert len(subject_digest("member@example.test")) == 32
+    assert len(subject_digest("member@example.test", KEY)) == 32
 
 
 def test_purge_deletes_only_ended_windows_up_to_the_limit() -> None:
@@ -137,3 +139,10 @@ def test_a_dry_run_purge_counts_without_deleting() -> None:
 
     assert counted == 1
     assert len(store.windows) == 2
+
+
+def test_digest_is_keyed_so_the_plain_subject_cannot_be_recomputed_without_it() -> None:
+    subject = "member@example.test"
+
+    assert subject_digest(subject, KEY) == subject_digest(subject, KEY)
+    assert subject_digest(subject, KEY) != subject_digest(subject, digest_key("other"))

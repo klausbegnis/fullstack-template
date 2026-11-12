@@ -43,14 +43,22 @@ class AlertNotification:
     code: str | None = None
 
     def as_text(self) -> str:
-        """Render the notification as plain text, the traceback fenced last."""
+        """Render the notification as plain text, the traceback fenced last.
+
+        `&`, `<` and `>` are escaped, so text taken from an exception can never
+        become a chat mention such as `<!channel>` or a link.
+        """
         lines = [f"[{self.severity.upper()}] {self.title}"]
         lines.extend(f"{label}: {value}" for label, value in self.fields)
         lines.append(f"{self.environment} | {self.occurred_at.isoformat()}")
         if self.code:
             fenced = self.code.replace(CODE_FENCE, SAFE_FENCE)
             lines.append(f"{CODE_FENCE}{fenced}{CODE_FENCE}")
-        return "\n".join(lines)
+        return _escape_markup("\n".join(lines))
+
+
+def _escape_markup(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 class ErrorAlertSink(Protocol):

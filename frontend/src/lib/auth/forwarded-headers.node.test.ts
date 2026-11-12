@@ -43,3 +43,14 @@ describe("forwardedJsonHeaders", () => {
     expect(forwarded["x-forwarded-for"]).toBe("1.2.3.4");
   });
 });
+
+describe("forwardedJsonHeaders client address", () => {
+  it("carries the edge proxy's X-Real-IP", async () => {
+    incoming.headers = new Headers({ "x-real-ip": "203.0.113.7" });
+
+    const forwarded = await forwardedJsonHeaders();
+
+    expect(forwarded["x-real-ip"]).toBe("203.0.113.7");
+    expect(forwarded["Content-Type"]).toBe("application/json");
+  });
+});
