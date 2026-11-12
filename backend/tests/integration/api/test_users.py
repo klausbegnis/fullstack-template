@@ -17,6 +17,7 @@ from app.core.security import hash_password
 from app.main import app
 from app.models.user import User, UserRole
 from app.repositories.users import UserRepository
+from tests.support.browser import BROWSER_HEADERS
 
 
 @pytest.fixture
@@ -45,10 +46,9 @@ def users_client() -> TestClient:
     app.dependency_overrides[get_settings] = lambda: Settings(
         DATABASE_URL=os.environ["DATABASE_URL"],
         TESTING=True,
-        DEBUG=True,
         AUTH_COOKIE_SECURE=False,
     )
-    with TestClient(app) as client:
+    with TestClient(app, headers=BROWSER_HEADERS) as client:
         app.state.db_session_factory = factory
         client.admin_email = admin_email  # type: ignore[attr-defined]
         client.admin_password = admin_password  # type: ignore[attr-defined]
@@ -150,7 +150,7 @@ def test_non_admin_cannot_list_or_create_users(users_client: TestClient) -> None
     created = _create_user(users_client, email=member_email, password=member_password)
     assert created.status_code == 201
 
-    member_client = TestClient(app)
+    member_client = TestClient(app, headers=BROWSER_HEADERS)
     _login(member_client, member_email, member_password)
 
     assert member_client.get("/users").status_code == 403
@@ -174,7 +174,7 @@ def test_non_admin_can_update_self_but_not_others(users_client: TestClient) -> N
         users_client, email=other_email, password=member_password
     ).json()["data"]["id"]
 
-    member_client = TestClient(app)
+    member_client = TestClient(app, headers=BROWSER_HEADERS)
     _login(member_client, member_email, member_password)
 
     self_update = member_client.patch(
@@ -199,7 +199,7 @@ def test_non_admin_cannot_escalate_own_role(users_client: TestClient) -> None:
         users_client, email=member_email, password=member_password
     ).json()["data"]["id"]
 
-    member_client = TestClient(app)
+    member_client = TestClient(app, headers=BROWSER_HEADERS)
     _login(member_client, member_email, member_password)
 
     escalation = member_client.patch(f"/users/{member_id}", json={"role": "admin"})

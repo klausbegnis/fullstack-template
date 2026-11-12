@@ -18,6 +18,7 @@ from app.main import app
 from app.models.auth_session import AuthSession
 from app.models.user import User, UserRole
 from app.repositories.users import UserRepository
+from tests.support.browser import BROWSER_HEADERS
 
 
 @pytest.fixture
@@ -48,10 +49,9 @@ def auth_client() -> TestClient:
     app.dependency_overrides[get_settings] = lambda: Settings(
         DATABASE_URL=__import__("os").environ["DATABASE_URL"],
         TESTING=True,
-        DEBUG=True,
         AUTH_COOKIE_SECURE=False,
     )
-    with TestClient(app) as client:
+    with TestClient(app, headers=BROWSER_HEADERS) as client:
         app.state.db_session_factory = factory
         client.auth_email = email  # type: ignore[attr-defined]
         client.auth_password = password  # type: ignore[attr-defined]
@@ -73,6 +73,12 @@ def _csrf_headers(client: TestClient) -> dict[str, str]:
         "Origin": "http://localhost:3000",
         "X-CSRF-Token": client.cookies[settings.AUTH_CSRF_COOKIE],
     }
+
+
+def _post_without_origin(client: TestClient, url: str, headers: dict[str, str]):
+    request = client.build_request("POST", url, headers=headers)
+    del request.headers["origin"]
+    return client.send(request)
 
 
 def _access_headers(value: str) -> dict[str, str]:
@@ -263,4 +269,57 @@ def test_disabled_user_invalidates_access(auth_client: TestClient) -> None:
             headers=_access_headers(login.cookies[settings.AUTH_ACCESS_COOKIE]),
         ).status_code
         == 401
+    )
+
+
+def test_login_without_origin_succeeds(auth_client: TestClient) -> None:
+    request = auth_client.build_request(
+        "POST",
+        "/auth/login",
+        json={"email": auth_client.auth_email, "password": auth_client.auth_password},  # type: ignore[attr-defined]
+    )
+    del request.headers["origin"]
+    response = auth_client.send(request)
+
+    assert response.status_code == 200
+    assert settings.AUTH_ACCESS_COOKIE in response.cookies
+
+
+def test_cookie_logout_without_origin_or_referer_is_forbidden(
+    auth_client: TestClient,
+) -> None:
+    access = _login(auth_client).cookies[settings.AUTH_ACCESS_COOKIE]
+
+    response = _post_without_origin(
+        auth_client,
+        "/auth/logout",
+        {"X-CSRF-Token": auth_client.cookies[settings.AUTH_CSRF_COOKIE]},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["message"] == "Origin is not allowed"
+    auth_client.cookies.clear()
+    assert (
+        auth_client.get("/auth/me", headers=_access_headers(access)).status_code == 200
+    )
+
+
+def test_cookie_logout_with_an_allowed_referer_revokes_the_session(
+    auth_client: TestClient,
+) -> None:
+    access = _login(auth_client).cookies[settings.AUTH_ACCESS_COOKIE]
+
+    response = _post_without_origin(
+        auth_client,
+        "/auth/logout",
+        {
+            "Referer": "http://localhost:3000/users",
+            "X-CSRF-Token": auth_client.cookies[settings.AUTH_CSRF_COOKIE],
+        },
+    )
+
+    assert response.status_code == 204
+    auth_client.cookies.clear()
+    assert (
+        auth_client.get("/auth/me", headers=_access_headers(access)).status_code == 401
     )
