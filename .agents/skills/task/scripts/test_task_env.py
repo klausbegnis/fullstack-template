@@ -213,5 +213,36 @@ class StateDirTests(unittest.TestCase):
             self.assertIsNone(task_env.read_state("demo", Path(root)))
 
 
+
+class NodePin(unittest.TestCase):
+    def test_reads_the_major_of_every_version_spelling(self):
+        for spelling in ("22", "v22.1.0", "22.x", " 22\n"):
+            self.assertEqual(task_env.node_major(spelling), 22)
+
+    def test_rejects_an_unreadable_version(self):
+        with self.assertRaises(ValueError):
+            task_env.node_major("lts/iron")
+
+    def test_matching_major_needs_no_fix(self):
+        self.assertIsNone(task_env.node_mismatch(22, "v22.23.5"))
+
+    def test_other_major_names_both_and_the_fix(self):
+        message = task_env.node_mismatch(22, "v26.13.1")
+        self.assertIn("Node 22 required, found v26.13.1", message)
+        self.assertIn(task_env.NODE_FIX_HINT, message)
+
+    def test_missing_node_is_a_mismatch(self):
+        self.assertIn("no node on PATH", task_env.node_mismatch(22, None))
+
+    def test_required_major_comes_from_the_frontend_nvmrc(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / "frontend").mkdir()
+            (repo / "frontend" / ".nvmrc").write_text("22\n")
+            self.assertEqual(task_env.required_node_major(repo), 22)
+
+    def test_repo_nvmrc_is_readable(self):
+        self.assertGreaterEqual(task_env.required_node_major(task_env.REPO_ROOT), 22)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

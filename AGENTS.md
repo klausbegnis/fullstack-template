@@ -22,7 +22,7 @@ when you touch matching files. `CLAUDE.md` files are one line, `@AGENTS.md`, eve
 | mypy (strict) | 2.3.1 | eslint-plugin-boundaries | 7.2.0 |
 | pytest | 9.1.1 | eslint-plugin-use-client | 1.2.0 |
 | PostgreSQL | 16 | prettier | 3.5.3 |
-| — | — | Node.js | 22 (`frontend/.nvmrc`, `engines.node`; CI uses 22) |
+| — | — | Node.js | 22 (`frontend/.nvmrc`, `engines.node: 22.x` with `engine-strict`; CI uses 22) |
 
 Backend uses `uv`; frontend uses `npm` (`package-lock.json` committed). eslint is pinned to
 `9.39.5` exactly — `eslint-config-next@16.3.5` breaks on ESLint 10.
@@ -94,7 +94,7 @@ Backend, from `backend/`:
 |---|---|
 | Install | `uv sync` |
 | Run dev server | `uv run python main.py` |
-| Test | `uv run pytest` — the integration tier is **silently skipped** without `DATABASE_URL`; a green run without it is not full coverage |
+| Test | `uv run pytest -n 4` (one database per worker) — the integration tier is **silently skipped** without `DATABASE_URL`; a green run without it is not full coverage |
 | Lint / format | `uv run ruff check .` · `uv run ruff format --check .` (`ruff format .` to write) |
 | Typecheck | `uv run mypy app` |
 | Migrations | `uv run alembic upgrade head` · `uv run alembic check` (both need a reachable `DATABASE_URL`) |

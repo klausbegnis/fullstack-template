@@ -129,7 +129,7 @@ jobs:
         run: uv run alembic check
 
       - name: Test
-        run: uv run pytest
+        run: uv run pytest -n 4
 
       - name: Verify the committed OpenAPI contract is current
         run: |

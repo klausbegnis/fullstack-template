@@ -13,3 +13,4 @@ frontend/.next/
 frontend/coverage/
 frontend/next-env.d.ts
 .task-worktrees/
+.claude/worktrees/

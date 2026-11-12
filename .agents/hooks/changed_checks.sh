@@ -27,20 +27,30 @@ backend_changed=$(printf '%s\n' "$changed" | grep -c '^backend/' || true)
 frontend_changed=$(printf '%s\n' "$changed" | grep -c '^frontend/' || true)
 harness_changed=$(printf '%s\n' "$changed" | grep -cE '^(\.github|\.githooks|\.claude|\.agents|\.codex|docs/prds|scripts)/' || true)
 
+if [ "$frontend_changed" -gt 0 ]; then
+  python3 .agents/skills/task/scripts/task_env.py node
+fi
+
 if [ "$backend_changed" -gt 0 ]; then
   echo "checks: backend"
   uv run --directory backend ruff format --check .
   uv run --directory backend ruff check .
-  uv run --directory backend pytest tests/unit -q
 else
   echo "checks: backend unchanged, skipped"
 fi
 
 if [ "$frontend_changed" -gt 0 ]; then
   echo "checks: frontend"
-  npm run --prefix frontend format
-  npm run --prefix frontend lint
-  npm run --prefix frontend test:fast
+  frontend_files=$(printf '%s\n' "$changed" | sed -n 's|^frontend/||p' | while IFS= read -r path; do
+    if [ -f "frontend/$path" ]; then printf '%s\n' "$path"; fi
+  done)
+  lint_files=$(printf '%s\n' "$frontend_files" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' || true)
+  if [ -n "$frontend_files" ]; then
+    printf '%s\n' "$frontend_files" | xargs npm run --silent --prefix frontend format:files --
+  fi
+  if [ -n "$lint_files" ]; then
+    printf '%s\n' "$lint_files" | xargs npm run --silent --prefix frontend lint:files --
+  fi
 else
   echo "checks: frontend unchanged, skipped"
 fi

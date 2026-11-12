@@ -24,7 +24,7 @@ Run from `backend/`. `DATABASE_URL` and `AUTH_JWT_SECRET` must be set first — 
 | ------------- | -------------------------------------------------------------------------------------------------------------------- |
 | Lint / format | `uv run ruff check .` · `uv run ruff format --check .`                                                               |
 | Typecheck     | `uv run mypy app`                                                                                                    |
-| Test          | `uv run pytest` (integration tier is skipped without `DATABASE_URL`)                                                 |
+| Test          | `uv run pytest -n 4` (one database per xdist worker; integration tier is skipped without `DATABASE_URL`)            |
 | Migrations    | `uv run python -m app.commands.create_migration -m "<msg>"` · `uv run alembic upgrade head` · `uv run alembic check` |
 | API contract  | `uv run python -m app.commands.export_openapi`                                                                       |
 

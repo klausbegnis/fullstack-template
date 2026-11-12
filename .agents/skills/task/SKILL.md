@@ -89,7 +89,8 @@ reopen the target node's todo and every node between it and where you are.
 - **A check you did not run is UNVERIFIED, not PASS.** Never report a check you did not
   execute in this run, and never paste output you did not see.
 - **Never `git commit --no-verify`.** `.githooks/pre-commit` is change-scoped and fast
-  (backend: ruff + `pytest tests/unit`; frontend: prettier + eslint + `test:fast`). It is a
+  (backend: ruff format + lint; frontend: the Node pin, then prettier + eslint on the staged files;
+  no test suite). It is a
   smoke gate, not the real gate — T7 is. If the hook fails, the work is not done.
 - **Never end a turn with live background work.** Evidence-producing suites run in the
   foreground. "It is still running" is not an acceptable final answer.
@@ -124,7 +125,7 @@ others.
 
 | Side | Directory | Commands, in order |
 |---|---|---|
-| backend | `backend/` | `uv run ruff format --check .` · `uv run ruff check .` · `uv run mypy app` · `uv run alembic upgrade head` · `uv run alembic check` · `uv run pytest` |
+| backend | `backend/` | `uv run ruff format --check .` · `uv run ruff check .` · `uv run mypy app` · `uv run alembic upgrade head` · `uv run alembic check` · `uv run pytest -n 4` |
 | frontend | `frontend/` | `npm run lint` · `npm run typecheck` · `npm run format` · `npm run test` · `npm run build` |
 
 Facts you must not rediscover the hard way:
@@ -363,8 +364,8 @@ git -C "$WT" push -u origin "$BRANCH"
 PR_URL=$(gh pr create --draft --base main --head "$BRANCH" \
   --title "<summary>" --body-file "$WT/.tasks/$DATE-$SLUG.md")
 ```
-Export the task env **before** committing. The pre-commit hook only runs `pytest tests/unit`
-(no database required), but T7 has already run the full suite against the task's own Postgres —
+Export the task env **before** committing. The pre-commit hook runs no test suite, only format
+and lint on the staged files, but T7 has already run the full suite against the task's own Postgres —
 that is the gate that counts. The commit **includes**
 `.tasks/$DATE-$SLUG.md`. The PR body **is the plan**, and for an issue it now also closes it
 on merge. Then tell the issue about the draft:

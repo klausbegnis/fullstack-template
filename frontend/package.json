@@ -9,7 +9,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "lint:files": "eslint --no-warn-ignored",
     "format": "prettier --check .",
+    "format:files": "prettier --check --ignore-unknown",
     "format:write": "prettier --write .",
     "pretypecheck": "npm run generate:api",
     "typecheck": "tsc --noEmit",
@@ -66,7 +68,7 @@
     "msw@2.15.0": true
   },
   "engines": {
-    "node": ">=22"
+    "node": "22.x"
   },
   "overrides": {
     "source-map-js": "1.2.2",
