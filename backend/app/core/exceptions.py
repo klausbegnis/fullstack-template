@@ -77,6 +77,18 @@ class UnauthorizedException(APIException):
         )
 
 
+class RefreshSupersededException(UnauthorizedException):
+    """A refresh token a sibling request rotated moments ago (401).
+
+    The session stays active: the winning request already set the new
+    cookies, so the caller retries with those instead of signing in again.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("Refresh token was already rotated")
+        self.code = "refresh_superseded"
+
+
 class ForbiddenException(APIException):
     """Exception for authorization errors (403)."""
 

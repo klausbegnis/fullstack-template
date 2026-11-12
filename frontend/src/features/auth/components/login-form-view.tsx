@@ -10,6 +10,7 @@ export interface LoginFormViewProps {
   register: UseFormRegister<LoginInput>;
   errors: FieldErrors<LoginInput>;
   formError: string | null;
+  sessionExpired?: boolean;
   isSubmitting: boolean;
   onSubmit: FormEventHandler<HTMLFormElement>;
 }
@@ -17,18 +18,25 @@ export interface LoginFormViewProps {
 /**
  * Renders the login form's markup from props only. Field wiring, validation
  * and submission all live in the container — code crosses through imports,
- * data crosses through props.
+ * data crosses through props. `sessionExpired` announces that the previous
+ * session ended on its own.
  */
 export function LoginFormView({
   register,
   errors,
   formError,
+  sessionExpired = false,
   isSubmitting,
   onSubmit,
 }: LoginFormViewProps) {
   return (
     <form {...{ onSubmit }} noValidate className="flex w-full max-w-sm flex-col gap-4">
       <h1 className="text-lg font-semibold text-gray-900">Sign in</h1>
+      {sessionExpired ? (
+        <p role="status" className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-900">
+          Your session expired. Sign in again.
+        </p>
+      ) : null}
       {formError ? <Alert tone="danger" title={formError} /> : null}
       <Field id="email" label="Email" error={errors.email?.message}>
         <Input

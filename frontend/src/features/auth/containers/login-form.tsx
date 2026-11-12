@@ -8,12 +8,19 @@ import { loginSchema } from "@/features/auth/model/login-schema";
 import type { LoginInput, LoginValues } from "@/features/auth/model/login-schema";
 import { LoginFormView } from "@/features/auth/components/login-form-view";
 
+export interface LoginFormProps {
+  returnTo?: string | null;
+  sessionExpired?: boolean;
+}
+
 /**
  * Wires the login form's validation and submission. Login is a React 19
  * Action rather than a `useMutation` call because writing the httpOnly
- * session cookie is something only the Next server can do.
+ * session cookie is something only the Next server can do. `returnTo` is
+ * handed to the action, which validates it before redirecting there.
+ * `sessionExpired` shows the notice for a session that ended on its own.
  */
-export function LoginForm() {
+export function LoginForm({ returnTo = null, sessionExpired = false }: LoginFormProps) {
   const [formError, setFormError] = useState<string | null>(null);
   const form = useForm<LoginInput, unknown, LoginValues>({
     resolver: zodResolver(loginSchema),
@@ -22,7 +29,7 @@ export function LoginForm() {
 
   const submit = form.handleSubmit(async (values) => {
     setFormError(null);
-    const result = await loginAction(values);
+    const result = await loginAction(values, returnTo);
     if (result.status === "error") {
       setFormError(result.message);
     }
@@ -34,6 +41,7 @@ export function LoginForm() {
         register={form.register}
         errors={form.formState.errors}
         formError={formError}
+        sessionExpired={sessionExpired}
         isSubmitting={form.formState.isSubmitting}
         onSubmit={submit}
       />

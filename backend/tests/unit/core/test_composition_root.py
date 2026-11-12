@@ -8,6 +8,7 @@ underlying connection detail.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import uuid
 
 from fastapi.testclient import TestClient
@@ -37,6 +38,8 @@ def test_auth_service_provider_can_be_overridden_at_http_boundary() -> None:
                 access_token="access",
                 refresh_token=f"{uuid.uuid4()}.refresh",
                 csrf_token="csrf",
+                access_expires_at=datetime.now(UTC) + timedelta(minutes=15),
+                session_expires_at=datetime.now(UTC) + timedelta(days=30),
             )
 
     fake = FakeAuthService()

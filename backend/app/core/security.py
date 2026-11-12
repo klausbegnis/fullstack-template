@@ -125,7 +125,7 @@ def set_auth_cookies(
     response.set_cookie(
         config.AUTH_REFRESH_COOKIE,
         refresh_token,
-        max_age=config.AUTH_SESSION_TTL_SECONDS,
+        max_age=config.AUTH_SESSION_IDLE_TTL_SECONDS,
         path="/api/auth",
         secure=secure,
         httponly=True,
@@ -134,7 +134,7 @@ def set_auth_cookies(
     response.set_cookie(
         config.AUTH_CSRF_COOKIE,
         csrf_token,
-        max_age=config.AUTH_SESSION_TTL_SECONDS,
+        max_age=config.AUTH_SESSION_IDLE_TTL_SECONDS,
         path="/",
         secure=secure,
         httponly=False,

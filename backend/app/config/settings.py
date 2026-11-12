@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     AUTH_JWT_AUDIENCE: str = "backend-web"
     AUTH_ACCESS_TTL_SECONDS: int = 900
     AUTH_SESSION_TTL_SECONDS: int = 30 * 24 * 60 * 60
+    AUTH_SESSION_IDLE_TTL_SECONDS: int = 14 * 24 * 60 * 60
+    AUTH_REFRESH_GRACE_SECONDS: int = 15
     AUTH_COOKIE_SECURE: bool | None = None
     AUTH_ACCESS_COOKIE: str = "app_access"
     AUTH_REFRESH_COOKIE: str = "app_refresh"
@@ -93,8 +95,17 @@ class Settings(BaseSettings):
             )
         if len(self.AUTH_JWT_SECRET.get_secret_value().encode()) < 32:
             raise ValueError("AUTH_JWT_SECRET must contain at least 256 bits")
-        if self.AUTH_ACCESS_TTL_SECONDS <= 0 or self.AUTH_SESSION_TTL_SECONDS <= 0:
+        if (
+            self.AUTH_ACCESS_TTL_SECONDS <= 0
+            or self.AUTH_SESSION_TTL_SECONDS <= 0
+            or self.AUTH_SESSION_IDLE_TTL_SECONDS <= 0
+            or self.AUTH_REFRESH_GRACE_SECONDS <= 0
+        ):
             raise ValueError("Authentication TTLs must be positive")
+        if self.AUTH_SESSION_IDLE_TTL_SECONDS > self.AUTH_SESSION_TTL_SECONDS:
+            raise ValueError(
+                "AUTH_SESSION_IDLE_TTL_SECONDS must not exceed AUTH_SESSION_TTL_SECONDS"
+            )
         return self
 
 
