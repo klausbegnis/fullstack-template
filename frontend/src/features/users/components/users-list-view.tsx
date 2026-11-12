@@ -5,7 +5,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination, type PaginationProps } from "@/components/ui/pagination";
 import { PILL_CLASS } from "@/components/ui/pill";
 import { Spinner } from "@/components/ui/spinner";
-import type { User } from "@/features/users/model/user";
+import { displayNameOf, type User } from "@/features/users/model/user";
 
 /** The id of the list's heading, which the pager scrolls into view on a page change. */
 export const USERS_HEADING_ID = "users-heading";
@@ -83,7 +83,7 @@ export function UsersListView({ users, status, pager }: UsersListViewProps) {
                 <tr key={user.id} className="border-b border-gray-100">
                   <td className="py-2">
                     <Link href={`/users/${user.id}`} className="text-blue-600 hover:underline">
-                      {user.name}
+                      {displayNameOf(user)}
                     </Link>
                   </td>
                   <td className="py-2 text-gray-700">{user.email}</td>

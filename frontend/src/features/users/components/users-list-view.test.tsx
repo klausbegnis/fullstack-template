@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { UsersListView, type UsersPagerProps } from "@/features/users/components/users-list-view";
 import type { User } from "@/features/users/model/user";
+import { buildUser } from "@/features/users/testing/factories";
 
 const users: User[] = [
   {
@@ -44,6 +45,13 @@ describe("UsersListView", () => {
     expect(screen.getByText("grace@example.com")).toBeInTheDocument();
     expect(screen.getByText("Disabled")).toBeInTheDocument();
     expect(screen.getByText("Active")).toBeInTheDocument();
+  });
+
+  it("names a user without a name by the local part of their email", () => {
+    const unnamed = buildUser({ id: "a3", name: "", email: "root@example.com" });
+    render(<UsersListView users={[unnamed]} status="ready" pager={pager()} />);
+
+    expect(screen.getByRole("link", { name: "root" })).toHaveAttribute("href", "/users/a3");
   });
 
   it("shows a spinner while loading and no table", () => {

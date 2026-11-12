@@ -47,6 +47,7 @@ file yourself before editing (the PostToolUse hook also injects the matching rul
 | `.agents/rules/frontend/data-and-forms.md` | `features/*/{api,containers,hooks,model}/**` — TanStack Query factories, mutations, derived state, forms |
 | `.agents/rules/frontend/ui-components.md` | `frontend/src/components/**`, `features/*/components/**` — props-only views, no `'use client'`, accessibility |
 | `.agents/rules/frontend/testing.md` | `frontend/src/**/*.test.*`, `frontend/src/testing/**` — layer → test type, MSW only, role queries |
+| `.agents/rules/e2e.md` | `e2e/**` — role locators, web-first waits, API seed, route manifest, compose `e2e` run |
 | `.agents/rules/harness.md` | `.claude/**`, `.agents/**`, `.codex/**`, `.github/**`, `docs/prds/**` — issue/PRD contract, single-source layout |
 
 Nested guides `backend/AGENTS.md` and `frontend/AGENTS.md` repeat their side's index and carry

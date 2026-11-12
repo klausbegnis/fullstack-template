@@ -40,6 +40,7 @@ export function CreateUserForm() {
       onSubmit={submit}
       includePassword
       submitLabel="Create user"
+      heading="New user"
     />
   );
 }
