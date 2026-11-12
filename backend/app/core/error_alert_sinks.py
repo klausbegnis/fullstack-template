@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-import logging
 from typing import Literal, Protocol
 
 import httpx
@@ -30,10 +29,6 @@ SAFE_FENCE = "'''"
 NOT_GIVEN = "-"
 
 Severity = Literal["error", "warning"]
-SEVERITY_LEVELS: dict[Severity, int] = {
-    "error": logging.ERROR,
-    "warning": logging.WARNING,
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,11 +63,11 @@ class LoggingErrorAlertSink:
     """Write each notification as one structured log record."""
 
     async def deliver(self, notification: AlertNotification) -> None:
-        logger.log(
-            SEVERITY_LEVELS[notification.severity],
-            "error alert: %s",
-            notification.title,
+        log = logger.error if notification.severity == "error" else logger.warning
+        log(
+            "error alert",
             extra={
+                "alert_title": notification.title,
                 "alert_environment": notification.environment,
                 "alert_fields": dict(notification.fields),
                 "alert_traceback": notification.code,

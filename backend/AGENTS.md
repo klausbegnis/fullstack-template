@@ -11,6 +11,7 @@ in [`docs/architecture/backend.md`](../docs/architecture/backend.md).
 | Rule file                                                                         | Applies to                                                                                                   |
 | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | [`.agents/rules/backend/layering.md`](../.agents/rules/backend/layering.md)       | `backend/app/**`                                                                                             |
+| [`.agents/rules/backend/logging.md`](../.agents/rules/backend/logging.md)       | `backend/app/**`                                                                                             |
 | [`.agents/rules/backend/persistence.md`](../.agents/rules/backend/persistence.md) | `backend/app/models/**`, `backend/app/repositories/**`, `backend/alembic/**`                                 |
 | [`.agents/rules/backend/api-crud.md`](../.agents/rules/backend/api-crud.md)       | `backend/app/routers/**`, `backend/app/schemas/**`, `backend/app/services/**`, `backend/app/dependencies/**` |
 | [`.agents/rules/backend/testing.md`](../.agents/rules/backend/testing.md)         | `backend/tests/**`                                                                                           |

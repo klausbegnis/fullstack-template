@@ -36,6 +36,7 @@ file yourself before editing (the PostToolUse hook also injects the matching rul
 | Rule file | Loads for |
 |---|---|
 | `.agents/rules/backend/layering.md` | `backend/app/**` — router → service → repository → model, DI aliases, envelopes, `APIException` only, `async def` everywhere |
+| `.agents/rules/backend/logging.md` | `backend/app/**` — `get_logger` only, constant messages with data in `extra`, no secrets or personal data, which layer logs |
 | `.agents/rules/backend/persistence.md` | `backend/app/models/**`, `backend/app/repositories/**`, `backend/alembic/**` — schema pins, naming convention, `.flush()` only, migrations |
 | `.agents/rules/backend/api-crud.md` | `backend/app/{routers,schemas,services,dependencies}/**` — the CRUD recipe: auth dep per route, return annotations, status codes, transaction boundary, contract sync |
 | `.agents/rules/backend/testing.md` | `backend/tests/**` — two tiers, fakes over mocks, one test module per service and router |

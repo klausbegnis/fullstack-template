@@ -110,7 +110,7 @@ def test_logging_sink_writes_one_record_at_the_notification_severity(
 
     asyncio.run(LoggingErrorAlertSink().deliver(_notification()))
 
-    [record] = [r for r in caplog.records if r.getMessage().startswith("error alert:")]
+    [record] = [r for r in caplog.records if r.getMessage() == "error alert"]
     assert record.levelno == logging.ERROR
     assert record.alert_fields == {"Route": "/items/{item_id}", "Release": "r1"}
 

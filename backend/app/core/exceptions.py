@@ -172,11 +172,13 @@ def api_exception_handler(request: Request, exc: APIException) -> JSONResponse:
     """Convert a domain API exception into the standard error envelope."""
     request_id = _request_id_of(request)
     logger.warning(
-        "API exception: %s - %s - Path: %s",
-        exc.code,
-        exc.message,
-        request.url.path,
-        extra={"request_id": request_id},
+        "api exception",
+        extra={
+            "request_id": request_id,
+            "error_code": exc.code,
+            "http_status_code": exc.status_code,
+            "http_path": request.url.path,
+        },
     )
 
     return _error_response(
@@ -215,10 +217,12 @@ def validation_exception_handler(
     request_id = _request_id_of(request)
     errors = _sanitize_validation_errors(exc.errors())
     logger.warning(
-        "Validation error on %s: %s",
-        request.url.path,
-        errors,
-        extra={"request_id": request_id},
+        "request validation failed",
+        extra={
+            "request_id": request_id,
+            "http_path": request.url.path,
+            "validation_errors": errors,
+        },
     )
 
     return _error_response(
@@ -238,10 +242,9 @@ def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
     request_id = _request_id_of(request)
     logger.error(
-        "Unhandled exception: %s",
-        exc,
+        "unhandled exception",
         exc_info=exc,
-        extra={"request_id": request_id},
+        extra={"request_id": request_id, "http_path": request.url.path},
     )
 
     response = _error_response(

@@ -23,8 +23,10 @@ internet ─▶ :80/:443 caddy ─▶ frontend:3000 (next start) ─/api/*─▶
   for a year with `includeSubDomains` (without `preload`), a deny-by-default
   `Permissions-Policy`, `X-Content-Type-Options`, `X-Frame-Options: DENY`, and a default
   `Referrer-Policy` written as `?Referrer-Policy` so a route's own policy wins. It overwrites
-  `X-Real-IP` with the peer it saw, which the api can use as the client address for per-IP
-  rate limits.
+  `X-Real-IP` with the peer it saw, and the api reads it as the client address for its per-IP
+  login limits (`RATE_LIMIT_CLIENT_IP_HEADER=X-Real-IP` in `.env.api`). Without it every request
+  reaches the api from the frontend container's address and the per-IP limit becomes one global
+  bucket.
 - **frontend** proxies `/api/*` to the api through the Next rewrite, exactly as in development;
   the api is never reachable from outside.
 - **api** runs `alembic upgrade head` on every start (`backend/entrypoint.sh`), then serves with
@@ -103,8 +105,9 @@ once the repository variable `VPS_DEPLOY_ENABLED` is `true`. It also needs the v
    sed -e "s|__generated__|$(gen 48)|" -e "s|__SITE__|$SITE|g" .env.api.example > .env.api
    ```
 
-   Every other backend setting (rate limits, alerts, ...) goes into `.env.api`; see
-   `backend/.env.example` for the full list.
+   Every other backend setting goes into `.env.api`; see `backend/.env.example` for the full
+   list. Set `ERROR_ALERT_WEBHOOK_URL` to a Slack incoming webhook (or any endpoint that accepts
+   `{"text": ...}`) to be told about unhandled errors; empty, they are only logged.
 5. **First deploy:** `scripts/deploy-vps.sh` from your machine.
 6. **First admin**, typed by the person who owns it (the password is prompted, never echoed):
 

@@ -24,6 +24,7 @@ FRONTEND_GUIDE = REPO_ROOT / "frontend" / "AGENTS.md"
 
 EXPECTED_RULE_FILES = {
     "backend/layering.md",
+    "backend/logging.md",
     "backend/persistence.md",
     "backend/api-crud.md",
     "backend/testing.md",

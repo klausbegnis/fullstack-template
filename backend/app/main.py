@@ -34,20 +34,27 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Initialize and release shared application resources."""
     setup_logging()
-    logger.info("Starting %s v%s", settings.APP_NAME, settings.APP_VERSION)
-    logger.info("Debug mode: %s", settings.DEBUG)
+    logger.info(
+        "application starting",
+        extra={
+            "app_name": settings.APP_NAME,
+            "app_version": settings.APP_VERSION,
+            "debug": settings.DEBUG,
+            "environment": settings.ENVIRONMENT,
+        },
+    )
 
     app.state.db_engine = None
     app.state.db_session_factory = None
     try:
         if settings.DATABASE_URL:
-            logger.info("Connecting to PostgreSQL")
+            logger.info("database connecting")
             app.state.db_engine = create_engine(db_settings=settings)
             await verify_connection(app.state.db_engine)
             app.state.db_session_factory = create_session_factory(app.state.db_engine)
-            logger.info("PostgreSQL SQLAlchemy engine ready")
+            logger.info("database ready")
         else:
-            logger.warning("Database disabled in explicitly isolated test mode")
+            logger.warning("database disabled in isolated test mode")
         yield
     finally:
         error_alerts = getattr(app.state, "error_alerts", None)
@@ -56,7 +63,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await dispose_engine(getattr(app.state, "db_engine", None))
         app.state.db_engine = None
         app.state.db_session_factory = None
-        logger.info("Shutting down")
+        logger.info("application stopped")
 
 
 class ApiDocsRoutes(TypedDict):
