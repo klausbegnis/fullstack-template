@@ -13,11 +13,13 @@ export interface UserFormViewProps<TFieldValues extends FieldValues> {
   onSubmit: FormEventHandler<HTMLFormElement>;
   includePassword: boolean;
   submitLabel: string;
+  heading?: string;
 }
 
 /**
  * Renders the shared create/edit user form markup from props only. The
- * container decides which schema, mutation and default values apply.
+ * container decides which schema, mutation and default values apply, and
+ * passes a `heading` when the form is the page's main content.
  */
 export function UserFormView<TFieldValues extends FieldValues>({
   register,
@@ -27,6 +29,7 @@ export function UserFormView<TFieldValues extends FieldValues>({
   onSubmit,
   includePassword,
   submitLabel,
+  heading,
 }: UserFormViewProps<TFieldValues>) {
   const nameField = "name" as Path<TFieldValues>;
   const emailField = "email" as Path<TFieldValues>;
@@ -35,6 +38,7 @@ export function UserFormView<TFieldValues extends FieldValues>({
 
   return (
     <form {...{ onSubmit }} noValidate className="flex max-w-sm flex-col gap-4">
+      {heading ? <h1 className="text-lg font-semibold text-gray-900">{heading}</h1> : null}
       {formError ? <Alert tone="danger" title={formError} /> : null}
       <Field id="name" label="Name" error={errors.name?.message as string | undefined}>
         <Input id="name" autoComplete="name" {...register(nameField)} />
