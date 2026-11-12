@@ -32,6 +32,7 @@ EXPECTED_RULE_FILES = {
     "frontend/data-and-forms.md",
     "frontend/ui-components.md",
     "frontend/testing.md",
+    "e2e.md",
     "harness.md",
 }
 IGNORED_DIRECTORIES = {"node_modules", ".venv", ".next", ".git", "__pycache__"}

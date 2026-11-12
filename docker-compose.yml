@@ -82,5 +82,29 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  e2e:
+    image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+    profiles: ["e2e"]
+    user: "${E2E_UID:-1000}:${E2E_GID:-1000}"
+    working_dir: /repo/e2e
+    volumes:
+      - .:/repo
+    environment:
+      HOME: /tmp/e2e-home
+      NPM_CONFIG_UPDATE_NOTIFIER: "false"
+      FRONTEND_BASE_URL: http://frontend:3000
+      API_BASE_URL: http://api:8000
+      E2E_ADMIN_EMAIL: ${E2E_ADMIN_EMAIL:-e2e-admin@example.test}
+      E2E_ADMIN_PASSWORD: ${E2E_ADMIN_PASSWORD:-e2e-not-a-real-pw}
+      CI: ${CI:-}
+      E2E_WORKERS: ${E2E_WORKERS:-}
+      E2E_RUN_ID: ${E2E_RUN_ID:-}
+    init: true
+    ipc: host
+    depends_on:
+      frontend:
+        condition: service_healthy
+    command: ["npx", "--no", "playwright", "test"]
+
 volumes:
   postgres_data:
