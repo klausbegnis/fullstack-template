@@ -56,11 +56,11 @@ uv run alembic upgrade head
 uv run python main.py
 ```
 
-`.env.example` sets `DATABASE_URL` to `postgresql+asyncpg://backend:backend@localhost:5432/backend`
+`.env.example` sets `DATABASE_URL` to `postgresql+asyncpg://app:app@localhost:5432/app`
 — point it at a real reachable Postgres 16 (e.g. `docker compose up db`, or edit the URL) before
 running the commands above; without it, both `alembic upgrade head` and `main.py` crash with a
 pydantic `ValidationError`. `AUTH_JWT_SECRET` is required and has no default — set it to at least 32
-bytes before anything will start. Generate one with
+random bytes before anything will start; the placeholder in `.env.example` is refused. Generate one with
 `python -c 'import secrets; print(secrets.token_urlsafe(48))'`.
 
 Frontend (from `frontend/`, requires Node 22 exactly — `engine-strict` refuses any other major;
@@ -166,3 +166,5 @@ for extending either stack.
 
 MIT — see [`LICENSE`](./LICENSE). Vendored third-party material keeps its own license; see
 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md).
+
+Security issues: please report them privately, as described in [`SECURITY.md`](./SECURITY.md).

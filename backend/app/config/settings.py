@@ -6,6 +6,13 @@ from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _TEST_ONLY_JWT_SECRET = "testing-only-signing-key-never-used-outside-tests"  # noqa: S105
+PUBLISHED_PLACEHOLDER_SECRETS = frozenset(
+    {
+        "replace-with-at-least-32-random-bytes",
+        _TEST_ONLY_JWT_SECRET,
+    }
+)
+PLACEHOLDER_SECRET_MARKERS = ("replace-with", "__generated__", "changeme")
 
 
 class Settings(BaseSettings):
@@ -139,6 +146,14 @@ class Settings(BaseSettings):
             )
         if len(self.AUTH_JWT_SECRET.get_secret_value().encode()) < 32:
             raise ValueError("AUTH_JWT_SECRET must contain at least 256 bits")
+        if not self.TESTING and _is_placeholder_secret(
+            self.AUTH_JWT_SECRET.get_secret_value()
+        ):
+            raise ValueError(
+                "AUTH_JWT_SECRET is a placeholder published in this repository; "
+                "generate a real one with "
+                "`python -c 'import secrets; print(secrets.token_urlsafe(48))'`."
+            )
         if (
             self.AUTH_ACCESS_TTL_SECONDS <= 0
             or self.AUTH_SESSION_TTL_SECONDS <= 0
@@ -151,6 +166,13 @@ class Settings(BaseSettings):
                 "AUTH_SESSION_IDLE_TTL_SECONDS must not exceed AUTH_SESSION_TTL_SECONDS"
             )
         return self
+
+
+def _is_placeholder_secret(secret: str) -> bool:
+    lowered = secret.lower()
+    return secret in PUBLISHED_PLACEHOLDER_SECRETS or any(
+        marker in lowered for marker in PLACEHOLDER_SECRET_MARKERS
+    )
 
 
 @lru_cache
