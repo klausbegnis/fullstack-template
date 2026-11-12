@@ -45,7 +45,9 @@ def test_access_claims_are_complete_and_strictly_validated() -> None:
     claims = decode_access_token(token, config=config)
     assert {"sub", "sid", "jti", "iss", "aud", "iat", "nbf", "exp"} <= claims.keys()
     altered = jwt.encode(
-        {**claims, "aud": "other"}, config.AUTH_JWT_SECRET, algorithm="HS256"
+        {**claims, "aud": "other"},
+        config.AUTH_JWT_SECRET.get_secret_value(),
+        algorithm="HS256",
     )
     with pytest.raises(jwt.InvalidAudienceError):
         decode_access_token(altered, config=config)

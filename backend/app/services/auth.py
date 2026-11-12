@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit
 import uuid
 
 import jwt
@@ -13,10 +14,10 @@ from app.core.security import (
     constant_time_equal,
     create_access_token,
     decode_access_token,
-    hash_password,
+    hash_password_off_loop,
     hash_secret,
     new_secret,
-    verify_password,
+    verify_password_off_loop,
 )
 from app.core.transactions import transaction
 from app.models.auth_session import AuthSession
@@ -60,6 +61,31 @@ class RefreshResult:
 def check_origin(origin: str | None, *, config: Settings = settings) -> None:
     """Reject an Origin header that CORS did not already allow."""
     if origin and origin not in config.CORS_ORIGINS:
+        raise ForbiddenException("Origin is not allowed")
+
+
+def request_origin(origin: str | None, referer: str | None) -> str | None:
+    """Return the Origin header, else the `scheme://host[:port]` of the Referer."""
+    if origin:
+        return origin
+    if not referer:
+        return None
+    parts = urlsplit(referer)
+    if not parts.scheme or not parts.netloc or "@" in parts.netloc:
+        return None
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+def check_credentialed_origin(
+    origin: str | None, referer: str | None, *, config: Settings = settings
+) -> None:
+    """Require an allowed origin on a mutation that carries a session cookie.
+
+    The cookie is an ambient credential, so a request that proves no origin at
+    all, neither Origin nor Referer, is refused rather than trusted.
+    """
+    resolved = request_origin(origin, referer)
+    if resolved is None or resolved not in config.CORS_ORIGINS:
         raise ForbiddenException("Origin is not allowed")
 
 
@@ -125,7 +151,7 @@ class AuthService:
         """Authenticate a user and open a new session with fresh tokens."""
         user = await self._users.get_by_email(email)
         password_hash = user.password_hash if user else _DUMMY_PASSWORD_HASH
-        valid, needs_rehash = verify_password(password, password_hash)
+        valid, needs_rehash = await verify_password_off_loop(password, password_hash)
         if not user or not valid or user.disabled_at is not None:
             raise UnauthorizedException()
         now = datetime.now(UTC)
@@ -145,7 +171,7 @@ class AuthService:
                 + timedelta(seconds=self._config.AUTH_SESSION_TTL_SECONDS),
             )
             if needs_rehash:
-                user.password_hash = hash_password(password)
+                user.password_hash = await hash_password_off_loop(password)
         access = create_access_token(
             user.id, auth_session.id, now=now, config=self._config
         )

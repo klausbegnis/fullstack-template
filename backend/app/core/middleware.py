@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 import uuid
 
@@ -12,6 +13,7 @@ from app.core.logger import get_logger
 from app.core.request_context import bind_request_id, get_request_id, reset_request_id
 
 REQUEST_ID_HEADER = "X-Request-ID"
+_INBOUND_REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
 _access_logger = get_logger("app.access")
 
@@ -19,10 +21,11 @@ _access_logger = get_logger("app.access")
 class RequestIDMiddleware:
     """Bind an inbound or generated request ID for the request's lifetime.
 
-    The ID is taken from the inbound `X-Request-ID` header when present, or
-    generated as a UUID4 otherwise. It is exposed to the rest of the request
-    through `app.core.request_context`, stored on `request.state.request_id`,
-    and echoed back on the response header.
+    The ID is taken from the inbound `X-Request-ID` header when it is at most 64
+    characters of `[A-Za-z0-9._-]` (a UUID passes), or generated as a UUID4
+    otherwise, so a client cannot put arbitrary text into logs and headers. It
+    is exposed to the rest of the request through `app.core.request_context`,
+    stored on `request.state.request_id`, and echoed back on the response header.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -33,9 +36,9 @@ class RequestIDMiddleware:
             await self._app(scope, receive, send)
             return
 
-        request_id = Headers(scope=scope).get(REQUEST_ID_HEADER.lower())
-        if not request_id:
-            request_id = str(uuid.uuid4())
+        request_id = _accepted_request_id(
+            Headers(scope=scope).get(REQUEST_ID_HEADER.lower())
+        )
         scope.setdefault("state", {})["request_id"] = request_id
         token = bind_request_id(request_id)
 
@@ -49,6 +52,12 @@ class RequestIDMiddleware:
             await self._app(scope, receive, send_with_request_id)
         finally:
             reset_request_id(token)
+
+
+def _accepted_request_id(inbound: str | None) -> str:
+    if inbound and _INBOUND_REQUEST_ID.fullmatch(inbound):
+        return inbound
+    return str(uuid.uuid4())
 
 
 class AccessLogMiddleware:

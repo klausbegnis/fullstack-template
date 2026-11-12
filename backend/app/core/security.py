@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 from datetime import UTC, datetime, timedelta
 import hashlib
@@ -28,6 +29,24 @@ def verify_password(password: str, password_hash: str) -> tuple[bool, bool]:
     except (InvalidHashError, VerificationError, VerifyMismatchError):
         return False, False
     return valid, _password_hasher.check_needs_rehash(password_hash)
+
+
+async def hash_password_off_loop(password: str) -> str:
+    """Hash a password in a worker thread so the event loop keeps serving.
+
+    Argon2 burns tens of milliseconds of CPU per hash on an idle host and
+    several hundred under load, while releasing the GIL. On the event loop that
+    time stalls every other request of the process; in a thread it does not.
+    Request paths use this; one-shot CLI commands keep `hash_password`.
+    """
+    return await asyncio.to_thread(hash_password, password)
+
+
+async def verify_password_off_loop(
+    password: str, password_hash: str
+) -> tuple[bool, bool]:
+    """Run `verify_password` in a worker thread, for the same reason as hashing."""
+    return await asyncio.to_thread(verify_password, password, password_hash)
 
 
 def new_secret() -> str:
@@ -65,13 +84,15 @@ def create_access_token(
         "nbf": now,
         "exp": expires,
     }
-    return jwt.encode(claims, config.AUTH_JWT_SECRET, algorithm="HS256")
+    return jwt.encode(
+        claims, config.AUTH_JWT_SECRET.get_secret_value(), algorithm="HS256"
+    )
 
 
 def decode_access_token(token: str, *, config: Settings = settings) -> dict[str, Any]:
     return jwt.decode(
         token,
-        config.AUTH_JWT_SECRET,
+        config.AUTH_JWT_SECRET.get_secret_value(),
         algorithms=["HS256"],
         issuer=config.AUTH_JWT_ISSUER,
         audience=config.AUTH_JWT_AUDIENCE,

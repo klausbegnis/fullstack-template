@@ -118,7 +118,7 @@ def test_openapi_does_not_expose_secrets_or_token_bodies(
 ) -> None:
     document = app.openapi()
     rendered = str(document)
-    assert settings.AUTH_JWT_SECRET not in rendered
+    assert settings.AUTH_JWT_SECRET.get_secret_value() not in rendered
     assert "refresh_token" not in rendered
     assert "access_token" not in rendered
 
@@ -128,7 +128,7 @@ def test_invalid_jwt_and_inactive_session_return_401(auth_client: TestClient) ->
     access = login.cookies[settings.AUTH_ACCESS_COOKIE]
     claims = jwt.decode(
         access,
-        settings.AUTH_JWT_SECRET,
+        settings.AUTH_JWT_SECRET.get_secret_value(),
         algorithms=["HS256"],
         options={"verify_aud": False},
     )
@@ -141,14 +141,16 @@ def test_invalid_jwt_and_inactive_session_return_401(auth_client: TestClient) ->
     )
     expired = jwt.encode(
         {**claims, "exp": datetime.now(UTC) - timedelta(minutes=1)},
-        settings.AUTH_JWT_SECRET,
+        settings.AUTH_JWT_SECRET.get_secret_value(),
         algorithm="HS256",
     )
     assert (
         auth_client.get("/auth/me", headers=_access_headers(expired)).status_code == 401
     )
     wrong_issuer = jwt.encode(
-        {**claims, "iss": "other"}, settings.AUTH_JWT_SECRET, algorithm="HS256"
+        {**claims, "iss": "other"},
+        settings.AUTH_JWT_SECRET.get_secret_value(),
+        algorithm="HS256",
     )
     assert (
         auth_client.get("/auth/me", headers=_access_headers(wrong_issuer)).status_code

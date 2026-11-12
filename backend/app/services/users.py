@@ -12,7 +12,7 @@ from app.core.exceptions import (
     NotFoundException,
     ValidationException,
 )
-from app.core.security import hash_password
+from app.core.security import hash_password_off_loop
 from app.core.transactions import transaction
 from app.models.user import User, UserRole
 from app.repositories.users import UserRepository
@@ -65,7 +65,7 @@ class UserService:
                 user = await self._users.create(
                     name=name,
                     email=payload.email,
-                    password_hash=hash_password(payload.password),
+                    password_hash=await hash_password_off_loop(payload.password),
                 )
                 if payload.role is not UserRole.MEMBER:
                     await self._users.update(user, role=payload.role)

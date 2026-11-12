@@ -2,7 +2,7 @@ from functools import lru_cache
 from typing import Annotated, Literal
 
 from fastapi import Depends
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _TEST_ONLY_JWT_SECRET = "testing-only-signing-key-never-used-outside-tests"  # noqa: S105
@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
-    AUTH_JWT_SECRET: str = ""
+    AUTH_JWT_SECRET: SecretStr = SecretStr("")
     AUTH_JWT_ISSUER: str = "backend-api"
     AUTH_JWT_AUDIENCE: str = "backend-web"
     AUTH_ACCESS_TTL_SECONDS: int = 900
@@ -81,15 +81,17 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_auth_configuration(self) -> "Settings":
-        if not self.AUTH_JWT_SECRET:
+        if not self.AUTH_JWT_SECRET.get_secret_value():
             if not self.TESTING:
                 raise ValueError(
                     "AUTH_JWT_SECRET is required; generate one with "
                     "`python -c 'import secrets; print(secrets.token_urlsafe(48))'`. "
                     "This template ships no default signing key on purpose."
                 )
-            object.__setattr__(self, "AUTH_JWT_SECRET", _TEST_ONLY_JWT_SECRET)
-        if len(self.AUTH_JWT_SECRET.encode()) < 32:
+            object.__setattr__(
+                self, "AUTH_JWT_SECRET", SecretStr(_TEST_ONLY_JWT_SECRET)
+            )
+        if len(self.AUTH_JWT_SECRET.get_secret_value().encode()) < 32:
             raise ValueError("AUTH_JWT_SECRET must contain at least 256 bits")
         if self.AUTH_ACCESS_TTL_SECONDS <= 0 or self.AUTH_SESSION_TTL_SECONDS <= 0:
             raise ValueError("Authentication TTLs must be positive")
