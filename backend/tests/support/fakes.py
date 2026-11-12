@@ -14,6 +14,7 @@ import uuid
 from sqlalchemy.exc import IntegrityError
 
 from app.core.security import hash_password
+from app.models.security_event import SecurityEvent
 from app.models.user import User, UserRole
 from app.repositories.users import normalize_email
 
@@ -139,3 +140,34 @@ class FakeUserRepository:
     async def disable(self, user: User) -> User:
         user.disabled_at = datetime.now(UTC)
         return user
+
+
+class FakeSecurityEventRepository:
+    """In-memory stand-in for `SecurityEventRepository` keeping appended events."""
+
+    def __init__(self) -> None:
+        self.events: list[SecurityEvent] = []
+
+    async def append(
+        self,
+        *,
+        action: str,
+        user_id: uuid.UUID,
+        actor_user_id: uuid.UUID | None,
+        payload: dict[str, object],
+    ) -> SecurityEvent:
+        event = SecurityEvent(
+            id=uuid.uuid4(),
+            action=action,
+            user_id=user_id,
+            actor_user_id=actor_user_id,
+            payload=payload,
+            created_at=datetime.now(UTC),
+        )
+        self.events.append(event)
+        return event
+
+    @property
+    def actions(self) -> list[str]:
+        """Return the recorded actions in order."""
+        return [event.action for event in self.events]

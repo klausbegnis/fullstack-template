@@ -164,6 +164,31 @@ sets that header. Ended windows are deleted by
 prints the count); schedule it hourly. A new throttled route adds its policy to `_POLICIES` in
 `app/core/rate_limit.py` — an unknown scope fails at import time.
 
+## Security audit log
+
+`app/services/security_audit.py::record_security_event` appends one row to `iam.security_events`
+(`action`, `user_id` the event is about, `actor_user_id` who caused it or null, a JSONB `payload`,
+`created_at`) and logs one `security event recorded` line carrying only the action and the user
+id. It runs inside the calling service's transaction, so the event commits or rolls back with the
+change it describes. Recorded actions:
+
+| Action | Recorded by | Actor | Payload |
+|---|---|---|---|
+| `auth.login_succeeded` | `AuthService.login` | the user | — |
+| `auth.login_failed` | `AuthService.login`, known account only, committed before the 401 | the user | `reason`: `invalid_password` / `disabled` |
+| `auth.logout` | `AuthService.logout` | the user | — |
+| `auth.refresh_token_reused` | `AuthService.refresh` when a consumed or revoked refresh token is replayed (the session is revoked) | null | — |
+| `user.created` / `user.disabled` | `UserService.create_user` / `disable_user` | the admin | `role` on create |
+| `user.updated` | `UserService.update_user` when name or email is sent | the editor | `fields`: names only, never values |
+| `user.role_changed` | `UserService.update_user` when the role actually changes | the admin | `old_role`, `role` |
+
+A sign-in for an unknown email writes no row (there is no user to attach it to); it logs
+`login failed for an unknown account` without the address. `safe_payload` refuses any payload key
+that names a password, secret, token, credential, cookie or email, so a careless caller fails
+loudly instead of persisting one. `user_id` deliberately has no foreign key: the trail outlives
+the account it describes. There is no read API; query the table directly or build an admin
+endpoint on `SecurityEventRepository`.
+
 ## Enforcement mechanisms (why the rules above are real)
 
 - `tests/unit/architecture/` is discovery-based, so a new feature is covered without a new test
