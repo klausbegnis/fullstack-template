@@ -5,14 +5,12 @@ import type { UserFilters } from "@/features/users/model/user-filters";
 export interface UsersFiltersController {
   filters: UserFilters;
   goToPage: (page: number) => void;
-  canGoToPreviousPage: boolean;
-  canGoToNextPage: (totalPages: number) => boolean;
 }
 
 /**
- * Holds the users list's pagination state. A hook rather than a bare
- * `useState` in the container because it also derives the previous/next
- * button guards from that state — real composition, not a `useQuery` wrapper.
+ * Holds the users list's filter and pagination state, so the query key and
+ * the pager read one value. A page below 1 is clamped to the first page; the
+ * upper bound is the pager's, which only offers existing pages.
  */
 export function useUsersFilters(
   initial: UserFilters = DEFAULT_USER_FILTERS,
@@ -24,7 +22,5 @@ export function useUsersFilters(
     goToPage: (page: number) => {
       setFilters((current) => ({ ...current, page: Math.max(1, page) }));
     },
-    canGoToPreviousPage: filters.page > 1,
-    canGoToNextPage: (totalPages: number) => filters.page < totalPages,
   };
 }
