@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.core.database import create_engine, create_session_factory
+from app.core.exceptions import RefreshSupersededException, UnauthorizedException
 from app.core.security import hash_password, hash_secret, new_secret
 from app.models.auth_session import AuthRefreshToken, AuthSession
 from app.models.user import User, UserRole
@@ -68,7 +69,7 @@ async def _seed(factory):
         return user.id, auth_session.id, f"{token.id}.{secret}", csrf
 
 
-def test_refresh_concurrency_allows_one_and_replays_the_other() -> None:
+def test_refresh_concurrency_allows_one_and_supersedes_the_other() -> None:
     asyncio.run(_test_refresh_concurrency())
 
 
@@ -84,12 +85,14 @@ async def _test_refresh_concurrency() -> None:
             )
             assert sum(isinstance(result, RefreshResult) for result in results) == 1
             assert (
-                sum(getattr(result, "status_code", None) == 401 for result in results)
+                sum(
+                    isinstance(result, RefreshSupersededException) for result in results
+                )
                 == 1
             )
         async with factory() as session:
             auth_session = await session.get(AuthSession, session_id)
-            assert auth_session is not None and auth_session.revoked_at is not None
+            assert auth_session is not None and auth_session.revoked_at is None
             assert (
                 await session.scalar(
                     select(func.count(AuthRefreshToken.id)).where(
@@ -192,6 +195,112 @@ async def _test_bootstrap_idempotency() -> None:
             assert repeated.id == user_id
             assert repeated.password_hash == original_hash
             assert repeated.role is UserRole.ADMIN
+    finally:
+        async with factory() as session:
+            await session.execute(delete(User).where(User.id == user_id))
+            await session.commit()
+        await engine.dispose()
+
+
+async def _age_token(factory, refresh_value: str, age: timedelta) -> None:
+    token_id = uuid.UUID(refresh_value.split(".", 1)[0])
+    async with factory() as session:
+        await session.execute(
+            update(AuthRefreshToken)
+            .where(AuthRefreshToken.id == token_id)
+            .values(created_at=datetime.now(UTC) - age)
+        )
+        await session.commit()
+
+
+def test_idle_limit_ends_a_session_at_refresh() -> None:
+    asyncio.run(_test_idle_limit_ends_a_session_at_refresh())
+
+
+async def _test_idle_limit_ends_a_session_at_refresh() -> None:
+    engine, factory = _factory()
+    idle_user_id, idle_session_id, idle_refresh, idle_csrf = await _seed(factory)
+    user_id, session_id, refresh_value, csrf = await _seed(factory)
+    try:
+        await _age_token(factory, idle_refresh, timedelta(days=15))
+        await _age_token(factory, refresh_value, timedelta(days=13))
+        async with factory() as session:
+            with pytest.raises(UnauthorizedException):
+                await _service(session).refresh(_context(idle_refresh, idle_csrf))
+        async with factory() as session:
+            before = await session.scalar(
+                select(AuthSession.last_seen_at).where(AuthSession.id == session_id)
+            )
+            result = await _service(session).refresh(_context(refresh_value, csrf))
+        successor_id = uuid.UUID(result.refresh_token.split(".", 1)[0])
+        async with factory() as session:
+            idle_session = await session.get(AuthSession, idle_session_id)
+            auth_session = await session.get(AuthSession, session_id)
+            successor = await session.get(AuthRefreshToken, successor_id)
+        assert idle_session is not None and idle_session.revoked_at is None
+        assert auth_session is not None and before is not None
+        assert auth_session.last_seen_at > before
+        assert successor is not None
+        expected = datetime.now(UTC) + timedelta(
+            seconds=settings.AUTH_SESSION_IDLE_TTL_SECONDS
+        )
+        assert abs(successor.expires_at - expected) < timedelta(seconds=10)
+    finally:
+        async with factory() as session:
+            await session.execute(
+                delete(User).where(User.id.in_([idle_user_id, user_id]))
+            )
+            await session.commit()
+        await engine.dispose()
+
+
+def test_idle_limit_ends_a_session_at_current_user_lookup() -> None:
+    asyncio.run(_test_idle_limit_ends_a_session_at_current_user_lookup())
+
+
+async def _test_idle_limit_ends_a_session_at_current_user_lookup() -> None:
+    engine, factory = _factory()
+    user_id, session_id, _, _ = await _seed(factory)
+    try:
+        async with factory() as session:
+            assert (await _service(session).current_user(session_id, user_id)).id == (
+                user_id
+            )
+        async with factory() as session:
+            await session.execute(
+                update(AuthSession)
+                .where(AuthSession.id == session_id)
+                .values(last_seen_at=datetime.now(UTC) - timedelta(days=15))
+            )
+            await session.commit()
+        async with factory() as session:
+            with pytest.raises(UnauthorizedException):
+                await _service(session).current_user(session_id, user_id)
+    finally:
+        async with factory() as session:
+            await session.execute(delete(User).where(User.id == user_id))
+            await session.commit()
+        await engine.dispose()
+
+
+def test_absolute_limit_ends_a_fresh_session_at_refresh() -> None:
+    asyncio.run(_test_absolute_limit_ends_a_fresh_session_at_refresh())
+
+
+async def _test_absolute_limit_ends_a_fresh_session_at_refresh() -> None:
+    engine, factory = _factory()
+    user_id, session_id, refresh_value, csrf = await _seed(factory)
+    try:
+        async with factory() as session:
+            await session.execute(
+                update(AuthSession)
+                .where(AuthSession.id == session_id)
+                .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+            )
+            await session.commit()
+        async with factory() as session:
+            with pytest.raises(UnauthorizedException):
+                await _service(session).refresh(_context(refresh_value, csrf))
     finally:
         async with factory() as session:
             await session.execute(delete(User).where(User.id == user_id))

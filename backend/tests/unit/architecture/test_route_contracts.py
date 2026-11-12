@@ -39,7 +39,6 @@ ENVELOPE_EXEMPT_ROUTES = {
     ("DELETE", "/users/{user_id}"),
 }
 NO_CONTENT_ROUTES = {
-    ("POST", "/auth/refresh"),
     ("POST", "/auth/logout"),
     ("DELETE", "/users/{user_id}"),
 }
