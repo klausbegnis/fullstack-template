@@ -18,6 +18,7 @@
     "pretest:fast": "node scripts/ensure-generated.mjs",
     "test:fast": "vitest run",
     "test:watch": "vitest",
+    "test:lint-rules": "node tools/eslint/no-imperative-event-handlers.test.cjs",
     "generate:api": "orval --config orval.config.ts"
   },
   "dependencies": {

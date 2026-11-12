@@ -14,7 +14,8 @@ data and forms are in `frontend/data-and-forms.md`.
 ### Render on the server by default and confine `'use client'` to containers
 
 Code crosses through imports, data crosses through props — so a directive is needed only where
-state, effects, event handlers or browser APIs are genuinely used. Inside a feature that is
+state, effects or browser APIs are genuinely used. A props-only view may render an event callback
+received from its container without owning the client boundary. Inside a feature that is
 `containers/**` only: the directive is banned by lint in `components`, `model`, `api`, `hooks`,
 `server` and `testing`. Hooks in `api/` and `hooks/` use client features without the directive
 because they are only ever imported from a container, which is the boundary. Outside features it

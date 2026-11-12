@@ -40,7 +40,7 @@ Run from `frontend/`. `typecheck`, `test` and `build` regenerate the API client 
 
 ### Server and client
 
-- Do not add `'use client'` outside `features/*/containers/` and `components/layout/`. Safe path: pass data and callbacks as props into a server-rendered view.
+- Do not add `'use client'` outside `features/*/containers/`, `components/layout/` and the `components/ui/use-*.ts` hooks. Safe path: pass data and callbacks as props into a server-rendered view.
 - Do not treat `src/middleware.ts` (`proxy.ts` in Next 16.3+) as the authorization gate — it can be bypassed. Safe path: `requireUser()` from `src/lib/auth/dal.ts` in the protected layout, route and Server Action.
 - Do not use a Server Action for a mutation other than setting or clearing the session cookie. Safe path: a `useMutation` hook in the feature's `api/`.
 - Do not ship an async `page.tsx` without a sibling `loading.tsx` and `error.tsx`. Safe path: add both beside the page.

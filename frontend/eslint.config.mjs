@@ -9,6 +9,7 @@ import vitest from "@vitest/eslint-plugin";
 
 const require = createRequire(import.meta.url);
 const noCommentsExceptTsdoc = require("./tools/eslint/no-comments-except-tsdoc.cjs");
+const noImperativeEventHandlers = require("./tools/eslint/no-imperative-event-handlers.cjs");
 
 const featureLayers = [
   "feature-model",
@@ -82,7 +83,14 @@ export default defineConfig([
   ...nextVitals,
   {
     files: ["src/**/*.{ts,tsx}", "tools/**/*.{js,cjs}"],
-    plugins: { local: { rules: { "no-comments-except-tsdoc": noCommentsExceptTsdoc } } },
+    plugins: {
+      local: {
+        rules: {
+          "no-comments-except-tsdoc": noCommentsExceptTsdoc,
+          "no-imperative-event-handlers": noImperativeEventHandlers,
+        },
+      },
+    },
     rules: { "local/no-comments-except-tsdoc": "error" },
   },
   {
@@ -107,6 +115,15 @@ export default defineConfig([
     plugins: { "use-client": useClient },
     rules: {
       "use-client/require-use-client": ["error", { removeUnnecessary: true }],
+    },
+  },
+  {
+    files: ["src/features/*/components/**/*.{ts,tsx}"],
+    ignores: ["src/**/*.test.{ts,tsx}", "src/**/*.node.test.ts"],
+    plugins: { "use-client": useClient },
+    rules: {
+      "use-client/require-use-client": ["error", { eventHandlers: false, removeUnnecessary: true }],
+      "local/no-imperative-event-handlers": "error",
     },
   },
   {
@@ -255,6 +272,20 @@ export default defineConfig([
       "vitest/no-focused-tests": "error",
       "vitest/no-disabled-tests": "error",
       "vitest/expect-expect": "error",
+    },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/components/ui/**"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          property: "showModal",
+          message:
+            "Open modals through useModalDialog from components/ui (outside click + Escape + focus return).",
+        },
+      ],
     },
   },
   {

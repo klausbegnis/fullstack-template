@@ -57,6 +57,14 @@ export function ProbeView() {
 }
 """,
     },
+    "feature-show-modal": {
+        "path": "frontend/src/features/users/hooks/__probe-dialog.ts",
+        "expect": "npm run lint (no-restricted-properties: showModal outside components/ui)",
+        "content": """export function openProbeDialog(dialog: HTMLDialogElement) {
+  dialog.showModal();
+}
+""",
+    },
     "barrel-file": {
         "path": "frontend/src/features/users/index.ts",
         "expect": "npm run test:fast (src/testing/architecture.node.test.ts: no barrels outside the generated client)",
