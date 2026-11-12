@@ -22,9 +22,9 @@ describe("Dialog", () => {
     expect(screen.getByText("Review the details.")).toHaveClass("p-3", "sm:p-4", "min-h-0");
     expect(screen.getByText("Review the details.")).not.toHaveClass("p-5");
     expect(screen.getByRole("dialog", { hidden: true })).not.toHaveClass("p-3", "min-h-0");
-    expect(screen.getByRole("button", { hidden: true })).toHaveAttribute(
-      "aria-label",
-      "Close Edit item",
+    expect(screen.getByRole("button", { hidden: true })).toHaveAttribute("aria-label", "Close");
+    expect(screen.getByRole("dialog", { hidden: true })).toHaveAccessibleDescription(
+      "Changes apply immediately.",
     );
   });
 
@@ -37,7 +37,7 @@ describe("Dialog", () => {
       </Dialog>,
     );
 
-    await user.click(screen.getByRole("button", { name: "Close Edit item", hidden: true }));
+    await user.click(screen.getByRole("button", { name: "Close", hidden: true }));
 
     expect(onClose).toHaveBeenCalledOnce();
   });

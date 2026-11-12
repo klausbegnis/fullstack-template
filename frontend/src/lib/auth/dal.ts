@@ -6,12 +6,13 @@ import { apiServerFetch } from "@/lib/api/server-client";
 import { CSRF_COOKIE_NAME } from "@/lib/api/request-config";
 import { ApiError } from "@/lib/errors/api-error";
 import {
+  ACCESS_COOKIE_NAME,
   RENEWED_COOKIE_NAME,
   RETURN_PATH_HEADER,
   renewPathReturningTo,
   shouldRenew,
 } from "@/lib/auth/renewal";
-import { safeReturnPath } from "@/lib/auth/return-path";
+import { expiredLoginPath, safeReturnPath } from "@/lib/auth/return-path";
 
 export type AuthUserRole = "admin" | "member";
 
@@ -49,15 +50,18 @@ async function signedOutDestination(): Promise<string> {
     hasRenewedCookie: cookieStore.has(RENEWED_COOKIE_NAME),
     secFetchSite: incoming.get("sec-fetch-site"),
   });
-  if (!renew) return "/login";
-  return renewPathReturningTo(safeReturnPath(incoming.get(RETURN_PATH_HEADER)) ?? "/");
+  const returnPath = safeReturnPath(incoming.get(RETURN_PATH_HEADER)) ?? "/";
+  if (renew) return renewPathReturningTo(returnPath);
+  return cookieStore.has(ACCESS_COOKIE_NAME) ? expiredLoginPath(returnPath) : "/login";
 }
 
 /**
  * Reads the current session and redirects when there is none: through the
  * `/api/auth/renew` Route Handler back to the current page (the path the
  * middleware put in `x-app-path`) while the visitor still holds a session
- * cookie and no renewal just happened, otherwise to `/login`.
+ * cookie and no renewal just happened, otherwise to `/login`, marked
+ * `reason=expired` while a rejected access cookie is still present so the
+ * middleware does not bounce the visitor straight back.
  * Call this from the layout of any route group that requires a signed-in
  * user, and from any Server Action that performs a sensitive mutation.
  */

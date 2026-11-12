@@ -72,8 +72,9 @@ async function refreshUnlessRotated(csrfAtStart: string | undefined): Promise<Re
   }
   try {
     const expiry = await refreshAuthRefreshPost();
-    const accessExpiresAt = Date.parse(expiry.access_expires_at);
-    broadcast({ type: "refreshed", expiresAt: accessExpiresAt });
+    const parsed = Date.parse(expiry.access_expires_at);
+    const accessExpiresAt = Number.isFinite(parsed) ? parsed : null;
+    if (accessExpiresAt !== null) broadcast({ type: "refreshed", expiresAt: accessExpiresAt });
     return { status: "refreshed", accessExpiresAt };
   } catch (error) {
     return classifyFailure(error);

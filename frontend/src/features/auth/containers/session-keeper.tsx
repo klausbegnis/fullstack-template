@@ -58,7 +58,11 @@ export function SessionKeeper({ accessExpiresAt }: SessionKeeperProps) {
         schedule(REFRESH_RETRY_DELAY_MS);
         return;
       }
-      if (outcome.accessExpiresAt !== null) expiresAt = outcome.accessExpiresAt;
+      if (outcome.accessExpiresAt === null) {
+        schedule(REFRESH_RETRY_DELAY_MS);
+        return;
+      }
+      expiresAt = outcome.accessExpiresAt;
       scheduleFromExpiry();
     }
 
@@ -82,6 +86,7 @@ export function SessionKeeper({ accessExpiresAt }: SessionKeeperProps) {
         endSession();
         return;
       }
+      if (!Number.isFinite(message.expiresAt)) return;
       expiresAt = message.expiresAt;
       scheduleFromExpiry();
     }

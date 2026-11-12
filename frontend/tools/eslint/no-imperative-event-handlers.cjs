@@ -117,6 +117,19 @@ module.exports = {
       return componentProps.get(component);
     };
 
+    const isAllowedHandler = (expression, props) =>
+      expression && (expression.type === "Identifier" || expression.type === "MemberExpression")
+        ? isCallbackReference(expression, props)
+        : Boolean(expression) && isDelegatingHandler(expression, props);
+
+    const propertyName = (property) => {
+      if (property.computed) return null;
+      if (property.key.type === "Identifier") return property.key.name;
+      if (property.key.type === "Literal" && typeof property.key.value === "string")
+        return property.key.value;
+      return null;
+    };
+
     return {
       JSXAttribute(node) {
         if (node.name.type !== "JSXIdentifier" || !EVENT_PROP.test(node.name.name)) return;
@@ -124,12 +137,22 @@ module.exports = {
         if (!component) return;
         const expression =
           node.value?.type === "JSXExpressionContainer" ? node.value.expression : null;
+        if (!isAllowedHandler(expression, getProps(component)))
+          context.report({ node, messageId: "imperative" });
+      },
+      JSXSpreadAttribute(node) {
+        if (node.argument.type !== "ObjectExpression") return;
+        const component = getComponentFunction(node);
+        if (!component) return;
         const props = getProps(component);
-        const allowed =
-          expression && (expression.type === "Identifier" || expression.type === "MemberExpression")
-            ? isCallbackReference(expression, props)
-            : expression && isDelegatingHandler(expression, props);
-        if (!allowed) context.report({ node, messageId: "imperative" });
+        for (const property of node.argument.properties) {
+          if (property.type !== "Property") continue;
+          const name = propertyName(property);
+          if (name === null || !EVENT_PROP.test(name)) continue;
+          const value = property.shorthand ? property.key : property.value;
+          if (!isAllowedHandler(value, props))
+            context.report({ node: property, messageId: "imperative" });
+        }
       },
     };
   },

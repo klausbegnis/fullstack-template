@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isNearExpiry,
   MIN_REFRESH_DELAY_MS,
+  REFRESH_RETRY_DELAY_MS,
   refreshDelayMs,
 } from "@/features/auth/model/refresh-schedule";
 
@@ -11,6 +12,10 @@ const LOWEST = () => 0;
 const HIGHEST = () => 0.999_999;
 
 describe("refreshDelayMs", () => {
+  it("waits the retry delay for an expiry that is not a number", () => {
+    expect(refreshDelayMs(Number.NaN, NOW, MIDPOINT)).toBe(REFRESH_RETRY_DELAY_MS);
+  });
+
   it("refreshes a 15-minute token two minutes before it expires", () => {
     expect(refreshDelayMs(NOW + 900_000, NOW, MIDPOINT)).toBe(780_000);
   });

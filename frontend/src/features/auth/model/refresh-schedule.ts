@@ -18,13 +18,15 @@ const JITTER_SHARE_OF_REMAINING = 10;
  * `expiresAtMs`. The lead is two minutes, or half the remaining lifetime when
  * that is shorter, so a short-lived token is refreshed halfway instead of in a
  * tight loop; the jitter is ±15 s, or ±10 % of the remaining lifetime. `random`
- * returns a value in [0, 1), like `Math.random`.
+ * returns a value in [0, 1), like `Math.random`. An expiry that is not a finite
+ * number waits the retry delay instead of firing at once.
  */
 export function refreshDelayMs(
   expiresAtMs: number,
   nowMs: number,
   random: () => number = Math.random,
 ): number {
+  if (!Number.isFinite(expiresAtMs)) return REFRESH_RETRY_DELAY_MS;
   const remaining = expiresAtMs - nowMs;
   if (remaining <= 0) return MIN_REFRESH_DELAY_MS;
   const lead = Math.min(REFRESH_LEAD_MS, remaining / LEAD_SHARE_OF_REMAINING);

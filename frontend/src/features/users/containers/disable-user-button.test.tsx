@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -72,6 +72,35 @@ describe("DisableUserButton", () => {
     });
     expect(requestedUrl).toContain("/users/u-1");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps the dialog open and shows why when disabling fails", async () => {
+    server.use(
+      http.delete("*/users/:userId", () =>
+        HttpResponse.json(
+          {
+            success: false,
+            error: {
+              code: "conflict",
+              message: "The last admin cannot be disabled",
+              details: null,
+            },
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<DisableUserButton userId="u-1" />);
+    await user.click(screen.getByRole("button", { name: "Disable user" }));
+
+    await user.click(screen.getByRole("button", { name: "Disable" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Disable this user?" });
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "The last admin cannot be disabled",
+    );
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it("blocks a second confirmation while the request is in flight", async () => {

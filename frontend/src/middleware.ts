@@ -70,7 +70,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(missingSessionPath(request), request.url));
   }
 
-  if (hasSession && PUBLIC_PATHS.has(pathname)) {
+  const expiredNotice = request.nextUrl.searchParams.get("reason") === "expired";
+  if (hasSession && PUBLIC_PATHS.has(pathname) && !expiredNotice) {
     return NextResponse.redirect(new URL(POST_LOGIN_PATH, request.url));
   }
 

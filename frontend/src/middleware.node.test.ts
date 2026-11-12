@@ -58,6 +58,12 @@ describe("middleware", () => {
     expect(response.headers.get("location")).toBe(`${ORIGIN}/`);
   });
 
+  it("lets a rejected session reach the expired-login notice instead of looping", () => {
+    const response = middleware(requestFor("/login?reason=expired", { withSession: true }));
+
+    expect(response.headers.get("location")).toBeNull();
+  });
+
   it("lets a visitor with a session cookie through to a protected page", () => {
     const response = middleware(requestFor("/users", { withSession: true }));
 

@@ -1,3 +1,5 @@
+"use client";
+
 import type { Ref } from "react";
 import { cn } from "@/lib/cn";
 import { pageRange, pageWindow } from "@/components/ui/pagination-window";
@@ -25,9 +27,7 @@ const CURRENT_CLASSES = "border-brand bg-brand text-white";
 /**
  * The shared pager under a growing table or list: "Showing 1–10 of N items" with Previous, the
  * page numbers and Next, or "Page X of Y" instead of the numbers below `md`. It renders nothing
- * while every row fits on one page. Handlers are spread (`{...{ onClick }}`, as in `Dialog`)
- * because `use-client/require-use-client` flags a literal `onClick` attribute, and this view stays
- * without `'use client'` so it renders inside server components too.
+ * while every row fits on one page. It is a client component: its buttons call `onPageChange`.
  */
 export function Pagination({
   page,
@@ -56,7 +56,7 @@ export function Pagination({
           type="button"
           className={cn(CONTROL_CLASSES, IDLE_CLASSES)}
           disabled={page <= 1}
-          {...{ onClick: () => onPageChange(page - 1) }}
+          onClick={() => onPageChange(page - 1)}
         >
           Previous
         </button>
@@ -76,7 +76,7 @@ export function Pagination({
                     CONTROL_CLASSES,
                     slot.page === page ? CURRENT_CLASSES : IDLE_CLASSES,
                   )}
-                  {...{ onClick: () => onPageChange(slot.page) }}
+                  onClick={() => onPageChange(slot.page)}
                 >
                   {slot.page}
                 </button>
@@ -89,7 +89,7 @@ export function Pagination({
           type="button"
           className={cn(CONTROL_CLASSES, IDLE_CLASSES)}
           disabled={page >= pageCount}
-          {...{ onClick: () => onPageChange(page + 1) }}
+          onClick={() => onPageChange(page + 1)}
         >
           Next
         </button>
