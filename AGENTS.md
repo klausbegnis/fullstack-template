@@ -156,7 +156,7 @@ agent bodies are tool-neutral, with a closing `## Harness notes` for the differe
 | `.agents/skills/orchestrate/` | `orchestrate --label <l> \| <items>` — runs a backlog of `task` items concurrently with isolation. |
 | `.agents/skills/scaffold-crud/` | generates a rule-compliant backend slice and/or frontend feature behind an approved artifact list. |
 | `.agents/skills/verify-rules/` | plants known violations and reports which gate caught each; run after touching lint or architecture tests. |
-| `.agents/skills/fastapi/`, `.agents/skills/react-best-practices/` | vendored upstream skills (FastAPI's, from the installed package; Vercel's). Repo rules win on conflict. |
+| `.agents/skills/fastapi/`, `.agents/skills/react-best-practices/`, `.agents/skills/security-audit/` | vendored upstream skills (FastAPI's, from the installed package; Vercel's; Cloudflare's security audit, see `docs/development/security-audit.md`). Repo rules win on conflict. |
 | `.agents/agents/{backend,frontend}-reviewer.md`, `uncle-bob.md` | read-only review rubrics (architecture per side; clean code across both). |
 
 Invocation: `/name` in Claude Code, `$name` in Codex. Codex loads nested `AGENTS.md` only for the
