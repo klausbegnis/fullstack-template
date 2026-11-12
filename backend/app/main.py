@@ -1,13 +1,13 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import cast
+from typing import TypedDict, cast
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.types import ExceptionHandler
 
-from .config import settings
+from .config import Settings, settings
 from .core import (
     REQUEST_ID_HEADER,
     AccessLogMiddleware,
@@ -55,11 +55,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Shutting down")
 
 
+class ApiDocsRoutes(TypedDict):
+    """The `FastAPI` arguments that mount the docs pages and the schema."""
+
+    docs_url: str | None
+    redoc_url: str | None
+    openapi_url: str | None
+
+
+def api_docs_routes(config: Settings) -> ApiDocsRoutes:
+    """Return the docs and schema routes, served only in development.
+
+    `ENVIRONMENT` defaults to `production`, so a deployment mounts none of
+    `/docs`, `/redoc` and `/openapi.json`; `export_openapi` and the tests read
+    the schema through `app.openapi()` instead.
+    """
+    enabled = config.ENVIRONMENT == "development"
+    return ApiDocsRoutes(
+        docs_url="/docs" if enabled else None,
+        redoc_url="/redoc" if enabled else None,
+        openapi_url="/openapi.json" if enabled else None,
+    )
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     debug=settings.DEBUG,
     lifespan=lifespan,
+    **api_docs_routes(settings),
 )
 
 app.add_middleware(

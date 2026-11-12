@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import Depends
 from pydantic import Field, model_validator
@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     APP_NAME: str = "Backend API"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
+    ENVIRONMENT: Literal["development", "production"] = Field(
+        default="production",
+        description=(
+            "Deployment environment; development unlocks local-only conveniences "
+            "such as the interactive API docs"
+        ),
+    )
     LOG_LEVEL: str = "INFO"
 
     HOST: str = "localhost"
@@ -60,6 +67,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 "DATABASE_URL is required outside explicitly isolated tests; "
                 "configure a PostgreSQL postgresql+asyncpg:// URL."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_production_configuration(self) -> "Settings":
+        if self.DEBUG and self.ENVIRONMENT == "production":
+            raise ValueError(
+                "DEBUG must be false when ENVIRONMENT is production; "
+                "set ENVIRONMENT=development for local debugging."
             )
         return self
 

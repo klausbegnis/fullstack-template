@@ -1,12 +1,13 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-app}
       POSTGRES_USER: ${POSTGRES_USER:-app}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -34,9 +35,11 @@ services:
       WORKERS: "1"
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}}
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?set AUTH_JWT_SECRET to a value of at least 32 bytes}
-      CORS_ORIGINS: '["http://localhost:3000"]'
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:${FRONTEND_PORT:-3000}","http://127.0.0.1:${FRONTEND_PORT:-3000}","http://frontend:3000"]}'
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -61,7 +64,7 @@ services:
     environment:
       API_PROXY_TARGET: http://api:8000
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     depends_on:
       api:
         condition: service_healthy

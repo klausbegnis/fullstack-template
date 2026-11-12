@@ -108,7 +108,9 @@ This template ships a small pipeline for agent-driven development, maintained on
 `.agents/agents/`, hook scripts in `.agents/hooks/` and scaffold generators in `.agents/scaffold/`.
 Claude Code reaches them through the `.claude/rules` and `.claude/skills` symlinks and thin
 `.claude/agents/*.md` files (`/name` commands); Codex reads `.agents/skills/` natively (`$name`
-commands) and its `.codex/agents/*.toml` point at the same rubrics. Ask either harness to delegate a
+commands) and its `.codex/agents/*.toml` point at the same rubrics. `.agents/skills/fastapi` is a
+symlink into the `fastapi` package's own bundled skill, so it resolves only after `uv sync` has
+created `backend/.venv`. Ask either harness to delegate a
 review to `backend-reviewer`, `frontend-reviewer`, or `uncle-bob` by name.
 
 | Claude / Codex | Purpose |
@@ -144,3 +146,8 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the contribution standards that a
 agents alike, [`docs/prds/README.md`](./docs/prds/README.md) for why PRDs are files and not
 issues, and [`AGENTS.md`](./AGENTS.md) for the full index, exact commands, and mechanical recipes
 for extending either stack.
+
+## License
+
+MIT — see [`LICENSE`](./LICENSE). Vendored third-party material keeps its own license; see
+[`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md).

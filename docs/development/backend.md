@@ -13,3 +13,8 @@ drift from what CI checks:
 - **What "done" means** — the Definition of Done in [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
 
 Architecture reasoning stays in [`docs/architecture/backend.md`](../architecture/backend.md).
+
+The interactive docs (`/docs`, `/redoc`) and `/openapi.json` are mounted only when
+`ENVIRONMENT=development` (the local `.env.example` sets it). `ENVIRONMENT` defaults to
+`production`, so a deployment serves none of them; read the schema from the committed
+`backend/openapi.json` or through `app.openapi()`.

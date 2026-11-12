@@ -116,7 +116,7 @@ def test_login_cookies_me_and_no_token_in_body(auth_client: TestClient) -> None:
 def test_openapi_does_not_expose_secrets_or_token_bodies(
     auth_client: TestClient,
 ) -> None:
-    document = auth_client.get("/openapi.json").json()
+    document = app.openapi()
     rendered = str(document)
     assert settings.AUTH_JWT_SECRET not in rendered
     assert "refresh_token" not in rendered
