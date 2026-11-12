@@ -14,6 +14,7 @@ from app.core.exceptions import (
     RefreshSupersededException,
     UnauthorizedException,
 )
+from app.core.logger import get_logger
 from app.core.security import (
     constant_time_equal,
     create_access_token,
@@ -27,8 +28,18 @@ from app.core.transactions import transaction
 from app.models.auth_session import AuthRefreshToken, AuthSession
 from app.models.user import User
 from app.repositories.auth_sessions import AuthSessionRepository
+from app.repositories.security_events import SecurityEventRepository
 from app.repositories.users import UserRepository
 from app.schemas.api.auth import AuthUserRead
+from app.services.security_audit import (
+    LOGIN_FAILED,
+    LOGIN_SUCCEEDED,
+    LOGOUT,
+    REFRESH_TOKEN_REUSED,
+    record_security_event,
+)
+
+logger = get_logger(__name__)
 
 _DUMMY_PASSWORD_HASH = (
     "$argon2id$v=19$m=65536,t=3,p=4$GxQNHil++9/g/0BYi5Ba5Q$SjSrOXFs"  # noqa: S105
@@ -167,11 +178,13 @@ class AuthService:
         session: AsyncSession,
         users: UserRepository,
         auth_sessions: AuthSessionRepository,
+        security_events: SecurityEventRepository,
         config: Settings,
     ) -> None:
         self._session = session
         self._users = users
         self._auth_sessions = auth_sessions
+        self._security_events = security_events
         self._config = config
 
     async def to_auth_user(self, user: User) -> AuthUserRead:
@@ -183,7 +196,11 @@ class AuthService:
         user = await self._users.get_by_email(email)
         password_hash = user.password_hash if user else _DUMMY_PASSWORD_HASH
         valid, needs_rehash = await verify_password_off_loop(password, password_hash)
-        if not user or not valid or user.disabled_at is not None:
+        if user is None:
+            logger.warning("login failed for an unknown account")
+            raise UnauthorizedException()
+        if not valid or user.disabled_at is not None:
+            await self._record_login_failure(user, password_valid=valid)
             raise UnauthorizedException()
         now = datetime.now(UTC)
         csrf = new_secret()
@@ -204,6 +221,12 @@ class AuthService:
             )
             if needs_rehash:
                 user.password_hash = await hash_password_off_loop(password)
+            await record_security_event(
+                self._security_events,
+                action=LOGIN_SUCCEEDED,
+                user_id=user.id,
+                actor_user_id=user.id,
+            )
         access = create_access_token(
             user.id, auth_session.id, now=now, config=self._config
         )
@@ -215,6 +238,18 @@ class AuthService:
             access_expires_at=access_token_expiry(now, self._config),
             session_expires_at=session_expires_at,
         )
+
+    async def _record_login_failure(self, user: User, *, password_valid: bool) -> None:
+        """Commit a failed sign-in for a known user before the caller refuses it."""
+        reason = "disabled" if password_valid else "invalid_password"
+        async with transaction(self._session):
+            await record_security_event(
+                self._security_events,
+                action=LOGIN_FAILED,
+                user_id=user.id,
+                actor_user_id=user.id,
+                payload={"reason": reason},
+            )
 
     async def current_user(self, session_id: uuid.UUID, user_id: uuid.UUID) -> User:
         """Resolve the active user behind a validated access-token session.
@@ -270,6 +305,12 @@ class AuthService:
                     raise RefreshSupersededException()
                 if token.consumed_at is not None or token.revoked_at is not None:
                     await self._auth_sessions.revoke(auth_session, "refresh_replay")
+                    await record_security_event(
+                        self._security_events,
+                        action=REFRESH_TOKEN_REUSED,
+                        user_id=auth_session.user_id,
+                        actor_user_id=None,
+                    )
                     replay_detected = True
                 else:
                     raise UnauthorizedException()
@@ -370,3 +411,9 @@ class AuthService:
         )
         async with transaction(self._session):
             await self._auth_sessions.revoke(auth_session, "logout")
+            await record_security_event(
+                self._security_events,
+                action=LOGOUT,
+                user_id=auth_session.user_id,
+                actor_user_id=auth_session.user_id,
+            )

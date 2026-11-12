@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import (
 
 from app.config import Settings, settings
 
+type SessionFactory = async_sessionmaker[AsyncSession]
+
 
 def create_engine(
     database_url: str | None = None,
@@ -43,9 +45,7 @@ def create_engine(
     )
 
 
-def create_session_factory(
-    engine: AsyncEngine,
-) -> async_sessionmaker[AsyncSession]:
+def create_session_factory(engine: AsyncEngine) -> SessionFactory:
     """Build a factory that creates one independent session per request."""
     return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -56,15 +56,24 @@ async def verify_connection(engine: AsyncEngine) -> None:
         await connection.execute(text("SELECT 1"))
 
 
-async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
-    """Provide one session per request and rollback failed requests."""
-    factory: async_sessionmaker[AsyncSession] | None = getattr(
+def request_session_factory(request: Request) -> SessionFactory:
+    """Return the application's session factory for work outside the request session.
+
+    A unit of work that must commit independently of the request, such as a
+    rate-limit hit that has to count even when the route later fails, opens its
+    own short session from this factory.
+    """
+    factory: SessionFactory | None = getattr(
         request.app.state, "db_session_factory", None
     )
     if factory is None:
         raise RuntimeError("Database session factory is not configured.")
+    return factory
 
-    async with factory() as session:
+
+async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """Provide one session per request and rollback failed requests."""
+    async with request_session_factory(request)() as session:
         try:
             yield session
         except BaseException:

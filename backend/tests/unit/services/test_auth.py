@@ -31,7 +31,7 @@ from app.services.auth import (
     check_origin,
     split_refresh,
 )
-from tests.support.fakes import FakeSession
+from tests.support.fakes import FakeSecurityEventRepository, FakeSession
 
 
 def test_argon2_passwords_and_rehash_contract() -> None:
@@ -184,6 +184,18 @@ class _FakeAuthSessions:
 
 
 def _service_fixture() -> tuple[AuthService, FakeSession, _FakeAuthSessions, User, str]:
+    service, session, auth_sessions, user, password, _ = _audited_fixture()
+    return service, session, auth_sessions, user, password
+
+
+def _audited_fixture() -> tuple[
+    AuthService,
+    FakeSession,
+    _FakeAuthSessions,
+    User,
+    str,
+    FakeSecurityEventRepository,
+]:
     password = "Correct horse battery staple 123!"
     user = User(
         id=uuid.uuid4(),
@@ -194,13 +206,15 @@ def _service_fixture() -> tuple[AuthService, FakeSession, _FakeAuthSessions, Use
     )
     session = FakeSession()
     auth_sessions = _FakeAuthSessions(user)
+    events = FakeSecurityEventRepository()
     service = AuthService(
         session=session,  # type: ignore[arg-type]
         users=_FakeUsers(user),  # type: ignore[arg-type]
         auth_sessions=auth_sessions,  # type: ignore[arg-type]
+        security_events=events,  # type: ignore[arg-type]
         config=Settings(TESTING=True),
     )
-    return service, session, auth_sessions, user, password
+    return service, session, auth_sessions, user, password, events
 
 
 def test_auth_service_login_owns_transaction_and_returns_cookie_values() -> None:
@@ -417,3 +431,95 @@ def test_refresh_reused_after_the_successor_was_used_revokes_the_session() -> No
 
     assert not isinstance(raised.value, RefreshSupersededException)
     assert auth_sessions.revocation_reason == "refresh_replay"
+
+
+def test_login_records_success_for_the_user() -> None:
+    service, _, _, user, password, events = _audited_fixture()
+
+    asyncio.run(service.login(user.email, password))
+
+    [event] = events.events
+    assert (event.action, event.user_id, event.actor_user_id) == (
+        "auth.login_succeeded",
+        user.id,
+        user.id,
+    )
+
+
+def test_wrong_password_commits_a_failure_before_refusing() -> None:
+    service, session, _, user, _, events = _audited_fixture()
+
+    with pytest.raises(UnauthorizedException):
+        asyncio.run(service.login(user.email, "not the password"))
+
+    [event] = events.events
+    assert event.action == "auth.login_failed"
+    assert event.payload == {"reason": "invalid_password"}
+    assert (session.commits, session.rollbacks) == (1, 0)
+
+
+def test_disabled_account_login_records_the_disabled_reason() -> None:
+    service, _, _, user, password, events = _audited_fixture()
+    user.disabled_at = datetime.now(UTC)
+
+    with pytest.raises(UnauthorizedException):
+        asyncio.run(service.login(user.email, password))
+
+    assert events.events[0].payload == {"reason": "disabled"}
+
+
+def test_unknown_email_records_no_event(caplog: pytest.LogCaptureFixture) -> None:
+    service, session, _, _, _, events = _audited_fixture()
+    caplog.set_level("WARNING")
+
+    with pytest.raises(UnauthorizedException):
+        asyncio.run(service.login("nobody@example.test", "whatever"))
+
+    assert events.events == []
+    assert session.commits == 0
+    assert "login failed for an unknown account" in caplog.text
+    assert "nobody@example.test" not in caplog.text
+
+
+def test_logout_records_an_event_for_the_session_user() -> None:
+    service, _, auth_sessions, user, _, events = _audited_fixture()
+    csrf = new_secret()
+    auth_sessions.auth_session.csrf_token_hash = hash_secret(csrf)
+    context = AuthRequestContext(
+        origin="http://localhost:3000",
+        access_token="invalid",
+        refresh_token=f"{auth_sessions.refresh.id}.secret",
+        csrf_cookie=csrf,
+        csrf_header=csrf,
+    )
+
+    asyncio.run(service.logout(context))
+
+    assert events.actions == ["auth.logout"]
+    assert events.events[0].user_id == user.id
+
+
+def test_refresh_token_replay_records_reuse_with_no_actor() -> None:
+    service, session, auth_sessions, user, _, events = _audited_fixture()
+    secret = new_secret()
+    auth_sessions.refresh.secret_hash = hash_secret(secret)
+    auth_sessions.refresh.consumed_at = datetime.now(UTC) - timedelta(hours=1)
+    context = AuthRequestContext(
+        origin="http://localhost:3000",
+        access_token=None,
+        refresh_token=f"{auth_sessions.refresh.id}.{secret}",
+        csrf_cookie=None,
+        csrf_header=None,
+    )
+
+    with pytest.raises(UnauthorizedException):
+        asyncio.run(service.refresh(context))
+
+    [event] = events.events
+    assert (event.action, event.user_id, event.actor_user_id) == (
+        "auth.refresh_token_reused",
+        user.id,
+        None,
+    )
+    assert auth_sessions.revocation_reason == "refresh_replay"
+    assert session.commits == 1

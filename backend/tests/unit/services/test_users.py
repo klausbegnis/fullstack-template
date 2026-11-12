@@ -14,13 +14,32 @@ from app.core.exceptions import (
 from app.models.user import User, UserRole
 from app.schemas.api.users import UserCreate, UserListFilters, UserUpdate
 from app.services.users import UserService, normalize_name
-from tests.support.fakes import FakeSession, FakeUserRepository, make_user
+from tests.support.fakes import (
+    FakeSecurityEventRepository,
+    FakeSession,
+    FakeUserRepository,
+    make_user,
+)
+
+ADMIN = make_user(role=UserRole.ADMIN)
 
 
 def _service(users: list[User], **kwargs: bool) -> tuple[UserService, FakeSession]:
+    service, session, _ = _audited_service(users, **kwargs)
+    return service, session
+
+
+def _audited_service(
+    users: list[User], **kwargs: bool
+) -> tuple[UserService, FakeSession, FakeSecurityEventRepository]:
     session = FakeSession()
-    repository = FakeUserRepository(users, **kwargs)
-    return UserService(session=session, users=repository), session  # type: ignore[arg-type]
+    events = FakeSecurityEventRepository()
+    service = UserService(
+        session=session,  # type: ignore[arg-type]
+        users=FakeUserRepository(users, **kwargs),  # type: ignore[arg-type]
+        security_events=events,  # type: ignore[arg-type]
+    )
+    return service, session, events
 
 
 def test_list_users_paginates_and_reports_total() -> None:
@@ -45,7 +64,8 @@ def test_create_user_defaults_role_to_member() -> None:
 
     result = asyncio.run(
         service.create_user(
-            UserCreate(name="New User", email="new@example.test", password="secret123")
+            ADMIN,
+            UserCreate(name="New User", email="new@example.test", password="secret123"),
         )
     )
 
@@ -59,7 +79,8 @@ def test_create_user_rejects_blank_name() -> None:
     with pytest.raises(ValidationException):
         asyncio.run(
             service.create_user(
-                UserCreate(name="   ", email="new@example.test", password="secret123")
+                ADMIN,
+                UserCreate(name="   ", email="new@example.test", password="secret123"),
             )
         )
 
@@ -70,9 +91,10 @@ def test_create_user_translates_integrity_error_to_conflict() -> None:
     with pytest.raises(ConflictException):
         asyncio.run(
             service.create_user(
+                ADMIN,
                 UserCreate(
                     name="Duplicate", email="dup@example.test", password="secret123"
-                )
+                ),
             )
         )
 
@@ -127,7 +149,7 @@ def test_last_admin_guard_blocks_disable() -> None:
     service, _ = _service([admin])
 
     with pytest.raises(ValidationException):
-        asyncio.run(service.disable_user(admin.id))
+        asyncio.run(service.disable_user(admin, admin.id))
 
 
 def test_disable_succeeds_when_another_admin_remains() -> None:
@@ -135,7 +157,94 @@ def test_disable_succeeds_when_another_admin_remains() -> None:
     other_admin = make_user(role=UserRole.ADMIN)
     service, session = _service([admin, other_admin])
 
-    result = asyncio.run(service.disable_user(admin.id))
+    result = asyncio.run(service.disable_user(other_admin, admin.id))
 
     assert result.disabled_at is not None
     assert session.commits == 1
+
+
+def test_create_user_records_the_admin_as_actor() -> None:
+    service, _, events = _audited_service([])
+
+    result = asyncio.run(
+        service.create_user(
+            ADMIN,
+            UserCreate(
+                name="New User",
+                email="new@example.test",
+                password="secret123",
+                role=UserRole.ADMIN,
+            ),
+        )
+    )
+
+    [event] = events.events
+    assert (event.action, event.user_id, event.actor_user_id) == (
+        "user.created",
+        result.id,
+        ADMIN.id,
+    )
+    assert event.payload == {"role": "admin"}
+
+
+def test_update_user_records_changed_fields_without_their_values() -> None:
+    target = make_user()
+    service, _, events = _audited_service([target])
+
+    asyncio.run(
+        service.update_user(
+            ADMIN,
+            target.id,
+            UserUpdate(name="Renamed User", email="renamed@example.test"),
+        )
+    )
+
+    [event] = events.events
+    assert event.action == "user.updated"
+    assert event.payload == {"fields": ["email", "name"]}
+    assert "renamed" not in repr(event.payload)
+
+
+def test_role_change_records_old_and_new_role() -> None:
+    target = make_user()
+    service, _, events = _audited_service([target, ADMIN])
+
+    asyncio.run(service.update_user(ADMIN, target.id, UserUpdate(role=UserRole.ADMIN)))
+
+    assert events.actions == ["user.role_changed"]
+    assert events.events[0].payload == {"old_role": "member", "role": "admin"}
+    assert events.events[0].actor_user_id == ADMIN.id
+
+
+def test_setting_the_same_role_records_nothing() -> None:
+    target = make_user()
+    service, _, events = _audited_service([target])
+
+    asyncio.run(service.update_user(ADMIN, target.id, UserUpdate(role=UserRole.MEMBER)))
+
+    assert events.events == []
+
+
+def test_disable_records_the_admin_as_actor() -> None:
+    target = make_user()
+    service, session, events = _audited_service([target])
+
+    asyncio.run(service.disable_user(ADMIN, target.id))
+
+    [event] = events.events
+    assert (event.action, event.user_id, event.actor_user_id) == (
+        "user.disabled",
+        target.id,
+        ADMIN.id,
+    )
+    assert session.commits == 1
+
+
+def test_a_refused_disable_records_nothing() -> None:
+    admin = make_user(role=UserRole.ADMIN)
+    service, _, events = _audited_service([admin])
+
+    with pytest.raises(ValidationException):
+        asyncio.run(service.disable_user(admin, admin.id))
+
+    assert events.events == []

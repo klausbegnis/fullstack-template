@@ -23,6 +23,7 @@ from .core import (
     validation_exception_handler,
     verify_connection,
 )
+from .core.error_alert_reporter import build_error_alert_reporter
 from .routers import auth_router, health_router, users_router
 from .schemas.api.errors import ERROR_RESPONSES
 
@@ -49,6 +50,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.warning("Database disabled in explicitly isolated test mode")
         yield
     finally:
+        error_alerts = getattr(app.state, "error_alerts", None)
+        if error_alerts is not None:
+            await error_alerts.aclose()
         await dispose_engine(getattr(app.state, "db_engine", None))
         app.state.db_engine = None
         app.state.db_session_factory = None
@@ -102,6 +106,7 @@ app.add_exception_handler(
     RequestValidationError, cast(ExceptionHandler, validation_exception_handler)
 )
 app.add_exception_handler(Exception, general_exception_handler)
+app.state.error_alerts = build_error_alert_reporter(settings)
 
 app.include_router(health_router, responses=ERROR_RESPONSES)
 app.include_router(auth_router, responses=ERROR_RESPONSES)

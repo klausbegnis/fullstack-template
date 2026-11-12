@@ -16,6 +16,7 @@ from app.core.security import hash_password, hash_secret, new_secret
 from app.models.auth_session import AuthRefreshToken, AuthSession
 from app.models.user import User, UserRole
 from app.repositories.auth_sessions import AuthSessionRepository
+from app.repositories.security_events import SecurityEventRepository
 from app.repositories.users import UserRepository
 from app.services.auth import AuthRequestContext, AuthService, RefreshResult
 
@@ -40,6 +41,7 @@ def _service(session) -> AuthService:
         session=session,
         users=UserRepository(session),
         auth_sessions=AuthSessionRepository(session),
+        security_events=SecurityEventRepository(session),
         config=settings,
     )
 

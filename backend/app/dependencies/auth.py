@@ -11,6 +11,7 @@ from app.core.exceptions import ForbiddenException, UnauthorizedException
 from app.core.security import decode_access_token
 from app.models.user import User, UserRole
 from app.repositories.auth_sessions import AuthSessionRepository
+from app.repositories.security_events import SecurityEventRepository
 from app.repositories.users import UserRepository
 from app.services.auth import (
     AuthRequestContext,
@@ -65,6 +66,7 @@ def get_auth_service(session: SessionDep, config: SettingsDep) -> AuthService:
         session=session,
         users=UserRepository(session),
         auth_sessions=AuthSessionRepository(session),
+        security_events=SecurityEventRepository(session),
         config=config,
     )
 
@@ -106,7 +108,9 @@ async def get_current_user(
         session_id = uuid.UUID(str(claims["sid"]))
     except (jwt.PyJWTError, KeyError, ValueError, TypeError):
         raise UnauthorizedException() from None
-    return await service.current_user(session_id, user_id)
+    user = await service.current_user(session_id, user_id)
+    request.state.user_id = user.id
+    return user
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]

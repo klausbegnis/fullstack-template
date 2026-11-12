@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { serverEnv } from "@/lib/env";
 import { parseApiResponse } from "@/lib/api/parse-response";
+import { forwardedJsonHeaders } from "@/lib/auth/forwarded-headers";
 import { safeReturnPath } from "@/lib/auth/return-path";
 import { applySetCookieHeaders } from "@/lib/auth/set-cookie";
 import { ApiError } from "@/lib/errors/api-error";
@@ -30,7 +31,7 @@ export async function loginAction(
   try {
     const response = await fetch(`${serverEnv.API_PROXY_TARGET}/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: await forwardedJsonHeaders(),
       body: JSON.stringify(values),
       cache: "no-store",
     });

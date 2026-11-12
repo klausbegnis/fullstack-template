@@ -133,6 +133,91 @@ the current context, so grepping one `request_id` across logs reconstructs every
 happened during that request. Verified by `tests/integration/api/test_observability.py` and
 `tests/unit/core/test_logger.py`.
 
+## Login rate limiting
+
+`POST /auth/login` declares `dependencies=[Depends(rate_limited("login"))]`
+(`app/dependencies/rate_limit.py`). Every attempt, successful or not, counts once against the
+client IP (`login:ip`) and once against the normalized body email (`login:subject`); a request
+whose body carries no usable email still counts per IP. Over either limit the route answers
+`TooManyRequestsException` — a 429 with `code: "rate_limited"`, `details.retry_after_seconds` and
+a `Retry-After` header — before the auth service runs.
+
+The counters are fixed windows in `iam.rate_limit_windows`, shared by every worker and surviving
+restarts. A hit is one atomic `INSERT ... ON CONFLICT DO UPDATE` (`RateLimitWindowRepository.hit`)
+that restarts an ended window at 1, committed by `RateLimitService` on a short session of its own
+(`request_session_factory`), so a hit still counts when the login later fails and rolls the
+request session back. Only the SHA-256 digest of the email or IP is stored.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `RATE_LIMIT_ENABLED` | `true` | `false` skips counting entirely (no database access) |
+| `RATE_LIMIT_LOGIN_PER_EMAIL` / `RATE_LIMIT_LOGIN_PER_IP` | `10` / `50` | attempts per window |
+| `RATE_LIMIT_LOGIN_WINDOW_SECONDS` | `900` | window length |
+| `RATE_LIMIT_TRUST_FORWARDED` | `false` | key on the right-most `X-Forwarded-For` hop |
+| `RATE_LIMIT_CLIENT_IP_HEADER` | empty | header a trusted edge proxy overwrites (e.g. `X-Real-IP`); wins over `X-Forwarded-For` |
+
+Behind the Next.js server the API sees the frontend container as the peer, so the login Server
+Action forwards the browser's `X-Forwarded-For` (`frontend/src/lib/auth/forwarded-headers.ts`);
+enable `RATE_LIMIT_TRUST_FORWARDED` only when every request reaches the API through a proxy that
+sets that header. Ended windows are deleted by
+`uv run python -m app.commands.purge_rate_limit_windows [--limit N] [--dry-run]` (default limit 500;
+prints the count); schedule it hourly. A new throttled route adds its policy to `_POLICIES` in
+`app/core/rate_limit.py` — an unknown scope fails at import time.
+
+## Security audit log
+
+`app/services/security_audit.py::record_security_event` appends one row to `iam.security_events`
+(`action`, `user_id` the event is about, `actor_user_id` who caused it or null, a JSONB `payload`,
+`created_at`) and logs one `security event recorded` line carrying only the action and the user
+id. It runs inside the calling service's transaction, so the event commits or rolls back with the
+change it describes. Recorded actions:
+
+| Action | Recorded by | Actor | Payload |
+|---|---|---|---|
+| `auth.login_succeeded` | `AuthService.login` | the user | — |
+| `auth.login_failed` | `AuthService.login`, known account only, committed before the 401 | the user | `reason`: `invalid_password` / `disabled` |
+| `auth.logout` | `AuthService.logout` | the user | — |
+| `auth.refresh_token_reused` | `AuthService.refresh` when a consumed or revoked refresh token is replayed (the session is revoked) | null | — |
+| `user.created` / `user.disabled` | `UserService.create_user` / `disable_user` | the admin | `role` on create |
+| `user.updated` | `UserService.update_user` when name or email is sent | the editor | `fields`: names only, never values |
+| `user.role_changed` | `UserService.update_user` when the role actually changes | the admin | `old_role`, `role` |
+
+A sign-in for an unknown email writes no row (there is no user to attach it to); it logs
+`login failed for an unknown account` without the address. `safe_payload` refuses any payload key
+that names a password, secret, token, credential, cookie or email, so a careless caller fails
+loudly instead of persisting one. `user_id` deliberately has no foreign key: the trail outlives
+the account it describes. There is no read API; query the table directly or build an admin
+endpoint on `SecurityEventRepository`.
+
+## Unhandled-error alerts
+
+`general_exception_handler` still returns the same sanitized 500, but when the process reports
+alerts it also captures an `ErrorAlert` (`app/core/error_alerts.py`) and hands it to the reporter
+on `app.state.error_alerts` as the response's background task, so delivery happens after the
+body is sent and can never change it. `APIException`s and validation errors never alert.
+
+- **Scrubbing.** The alert names the route by its template (`/users/{user_id}`, never the raw
+  path), carries only the request id and the signed-in user's id (`request.state.user_id`, set by
+  `get_current_user`), and renders the traceback from frame summaries alone — file, line,
+  function, source line; never locals, headers, cookies, query or body. The exception message is
+  cut before any `[SQL:`, `[parameters:` or `DETAIL:` marker, emails, phone-like digit runs and
+  token-like strings are replaced, and it is capped at 300 characters.
+- **Throttle** (`app/core/error_alert_throttle.py`, per process). The first occurrence of a
+  fingerprint (exception class + route + innermost `app/` frame) is delivered; repeats within
+  `ERROR_ALERT_REPEAT_WINDOW_SECONDS` (600) are counted and summarised once when the window
+  closes. At most `ERROR_ALERT_MAX_POSTS_PER_HOUR` (20) deliveries per hour; the excess is
+  dropped and reported in one notice when the hour turns.
+- **Pluggable sink** (`app/core/error_alert_sinks.py`). `ErrorAlertSink` is a one-method
+  Protocol (`async deliver(notification)`). `LoggingErrorAlertSink`, the default, writes one
+  structured `error alert: ...` record. Setting `ERROR_ALERT_WEBHOOK_URL` selects
+  `WebhookErrorAlertSink`, which POSTs `{"text": "<plain-text rendering>"}` — exactly the body a
+  Slack incoming webhook accepts, and easy for any other receiver to consume. A failed delivery
+  logs one `error alert not delivered` warning naming only the error type, never the URL. Another
+  destination is a new class with a `deliver` method passed to `build_error_alert_reporter`.
+
+Reporting is on only under `ENVIRONMENT=production`; in development the traceback in the console
+is the alert. The reporter's pending flush task is cancelled in the lifespan shutdown.
+
 ## Enforcement mechanisms (why the rules above are real)
 
 - `tests/unit/architecture/` is discovery-based, so a new feature is covered without a new test
