@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Depends, Response, status
 
 from app.config import SettingsDep
 from app.core.exceptions import UnauthorizedException
 from app.core.security import clear_auth_cookies, set_auth_cookies
-from app.dependencies import AuthContextDep, AuthServiceDep, CurrentUser
+from app.dependencies import (
+    AuthContextDep,
+    AuthServiceDep,
+    CurrentUser,
+    rate_limited,
+)
 from app.schemas.api.auth import AuthUserRead, LoginRequest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(rate_limited("login"))])
 async def login(
     payload: LoginRequest,
     response: Response,

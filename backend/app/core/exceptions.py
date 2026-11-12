@@ -21,11 +21,13 @@ class APIException(Exception):  # noqa: N818
         code: str,
         message: str,
         details: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ):
         self.status_code = status_code
         self.code = code.lower()
         self.message = message
         self.details = details
+        self.headers = headers
         super().__init__(self.message)
 
 
@@ -110,6 +112,23 @@ class ConflictException(APIException):
         )
 
 
+class TooManyRequestsException(APIException):
+    """Exception for throttled requests (429) carrying a `Retry-After` header."""
+
+    def __init__(
+        self,
+        retry_after_seconds: int,
+        message: str = "Too many attempts. Try again later.",
+    ):
+        super().__init__(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            code="rate_limited",
+            message=message,
+            details={"retry_after_seconds": retry_after_seconds},
+            headers={"Retry-After": str(retry_after_seconds)},
+        )
+
+
 def _request_id_of(request: Request) -> str | None:
     """Return the request ID bound by `RequestIDMiddleware`, if any."""
     return getattr(request.state, "request_id", None)
@@ -122,13 +141,14 @@ def _error_response(
     details: dict[str, Any] | None = None,
     *,
     request_id: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     """Build the standard error envelope response, echoing the request ID."""
     content = ErrorResponse(
         error=ErrorDetail(code=code, message=message, details=details),
         request_id=request_id,
     ).model_dump(exclude_none=True)
-    response = JSONResponse(status_code=status_code, content=content)
+    response = JSONResponse(status_code=status_code, content=content, headers=headers)
     if request_id is not None:
         response.headers[REQUEST_ID_HEADER] = request_id
     return response
@@ -146,7 +166,12 @@ def api_exception_handler(request: Request, exc: APIException) -> JSONResponse:
     )
 
     return _error_response(
-        exc.status_code, exc.code, exc.message, exc.details, request_id=request_id
+        exc.status_code,
+        exc.code,
+        exc.message,
+        exc.details,
+        request_id=request_id,
+        headers=exc.headers,
     )
 
 

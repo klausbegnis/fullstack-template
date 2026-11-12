@@ -53,6 +53,26 @@ class Settings(BaseSettings):
     AUTH_REFRESH_COOKIE: str = "app_refresh"
     AUTH_CSRF_COOKIE: str = "app_csrf"
 
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_TRUST_FORWARDED: bool = Field(
+        default=False,
+        description=(
+            "Read the client address from the right-most X-Forwarded-For entry; "
+            "enable only behind a proxy that sets it"
+        ),
+    )
+    RATE_LIMIT_CLIENT_IP_HEADER: str = Field(
+        default="",
+        description=(
+            "Header the edge proxy overwrites with the client address it saw "
+            "(for example X-Real-IP); takes precedence over X-Forwarded-For. "
+            "Leave empty unless every request passes through that proxy"
+        ),
+    )
+    RATE_LIMIT_LOGIN_PER_EMAIL: int = Field(default=10, ge=1)
+    RATE_LIMIT_LOGIN_PER_IP: int = Field(default=50, ge=1)
+    RATE_LIMIT_LOGIN_WINDOW_SECONDS: int = Field(default=900, ge=1)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

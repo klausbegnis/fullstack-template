@@ -133,6 +133,37 @@ the current context, so grepping one `request_id` across logs reconstructs every
 happened during that request. Verified by `tests/integration/api/test_observability.py` and
 `tests/unit/core/test_logger.py`.
 
+## Login rate limiting
+
+`POST /auth/login` declares `dependencies=[Depends(rate_limited("login"))]`
+(`app/dependencies/rate_limit.py`). Every attempt, successful or not, counts once against the
+client IP (`login:ip`) and once against the normalized body email (`login:subject`); a request
+whose body carries no usable email still counts per IP. Over either limit the route answers
+`TooManyRequestsException` — a 429 with `code: "rate_limited"`, `details.retry_after_seconds` and
+a `Retry-After` header — before the auth service runs.
+
+The counters are fixed windows in `iam.rate_limit_windows`, shared by every worker and surviving
+restarts. A hit is one atomic `INSERT ... ON CONFLICT DO UPDATE` (`RateLimitWindowRepository.hit`)
+that restarts an ended window at 1, committed by `RateLimitService` on a short session of its own
+(`request_session_factory`), so a hit still counts when the login later fails and rolls the
+request session back. Only the SHA-256 digest of the email or IP is stored.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `RATE_LIMIT_ENABLED` | `true` | `false` skips counting entirely (no database access) |
+| `RATE_LIMIT_LOGIN_PER_EMAIL` / `RATE_LIMIT_LOGIN_PER_IP` | `10` / `50` | attempts per window |
+| `RATE_LIMIT_LOGIN_WINDOW_SECONDS` | `900` | window length |
+| `RATE_LIMIT_TRUST_FORWARDED` | `false` | key on the right-most `X-Forwarded-For` hop |
+| `RATE_LIMIT_CLIENT_IP_HEADER` | empty | header a trusted edge proxy overwrites (e.g. `X-Real-IP`); wins over `X-Forwarded-For` |
+
+Behind the Next.js server the API sees the frontend container as the peer, so the login Server
+Action forwards the browser's `X-Forwarded-For` (`frontend/src/lib/auth/forwarded-headers.ts`);
+enable `RATE_LIMIT_TRUST_FORWARDED` only when every request reaches the API through a proxy that
+sets that header. Ended windows are deleted by
+`uv run python -m app.commands.purge_rate_limit_windows [--limit N] [--dry-run]` (default limit 500;
+prints the count); schedule it hourly. A new throttled route adds its policy to `_POLICIES` in
+`app/core/rate_limit.py` — an unknown scope fails at import time.
+
 ## Enforcement mechanisms (why the rules above are real)
 
 - `tests/unit/architecture/` is discovery-based, so a new feature is covered without a new test
