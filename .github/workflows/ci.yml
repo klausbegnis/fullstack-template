@@ -24,6 +24,7 @@ jobs:
       frontend: ${{ steps.scope.outputs.frontend }}
       harness: ${{ steps.scope.outputs.harness }}
       images: ${{ steps.scope.outputs.images }}
+      e2e: ${{ steps.scope.outputs.e2e }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -58,6 +59,7 @@ jobs:
           frontend=$everything
           harness=$everything
           images=$everything
+          e2e=$everything
           if matches '^backend/'; then
             backend=true
           fi
@@ -70,12 +72,16 @@ jobs:
           if matches '^(backend/(pyproject\.toml|uv\.lock)|frontend/(package(-lock)?\.json))$'; then
             images=true
           fi
+          if [ "$backend" = true ] || [ "$frontend" = true ] || matches '^e2e/'; then
+            e2e=true
+          fi
 
           {
             echo "backend=$backend"
             echo "frontend=$frontend"
             echo "harness=$harness"
             echo "images=$images"
+            echo "e2e=$e2e"
           } | tee -a "$GITHUB_OUTPUT"
 
   backend:
@@ -254,7 +260,7 @@ jobs:
   e2e:
     name: E2E
     needs: changes
-    if: ${{ needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true' }}
+    if: ${{ needs.changes.outputs.e2e == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

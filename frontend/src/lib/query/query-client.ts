@@ -1,10 +1,31 @@
 import { QueryClient, defaultShouldDehydrateQuery, isServer } from "@tanstack/react-query";
 import { cache } from "react";
+import { ApiError } from "@/lib/errors/api-error";
+
+const MAX_QUERY_RETRIES = 3;
+const CLIENT_ERROR_MIN = 400;
+const CLIENT_ERROR_MAX = 499;
+
+/**
+ * Retries a failed query up to three times, except when the API answered with
+ * a 4xx: a refused or missing resource does not fix itself, and retrying it
+ * only delays the error the page shows.
+ */
+export function shouldRetryQuery(failureCount: number, error: unknown): boolean {
+  if (
+    error instanceof ApiError &&
+    error.status >= CLIENT_ERROR_MIN &&
+    error.status <= CLIENT_ERROR_MAX
+  ) {
+    return false;
+  }
+  return failureCount < MAX_QUERY_RETRIES;
+}
 
 /**
  * Builds a `QueryClient` configured for this template: queries are treated
  * as fresh for a short window so a server-side prefetch is not immediately
- * refetched on hydration, and pending queries are dehydrated alongside
+ * refetched on hydration, 4xx answers are not retried, and pending queries are dehydrated alongside
  * successful ones so streaming SSR can resolve them on the client.
  */
 export function makeQueryClient(): QueryClient {
@@ -12,6 +33,7 @@ export function makeQueryClient(): QueryClient {
     defaultOptions: {
       queries: {
         staleTime: 60_000,
+        retry: shouldRetryQuery,
       },
       dehydrate: {
         shouldDehydrateQuery: (query) =>
