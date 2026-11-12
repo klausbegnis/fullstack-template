@@ -96,7 +96,19 @@ export default async function Page() {
 ```tsx
 export default async function AppLayout({ children }: AppLayoutProps) {
   const user = await requireUser();
-  return <AppShell actions={<LogoutButton />}>{children}</AppShell>;
+  return (
+    <AppShell
+      productName="App"
+      items={navItems}
+      accountMenu={
+        <AccountMenu userName={user.name} userEmail={user.email}>
+          <LogoutButton variant="menuitem" />
+        </AccountMenu>
+      }
+    >
+      {children}
+    </AppShell>
+  );
 }
 ```
 
