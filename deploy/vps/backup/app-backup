@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+STACK_DIR="${STACK_DIR:-/opt/app}"
+LOCAL_DIR="${BACKUP_LOCAL_DIR:-/var/backups/app}"
+LOCAL_KEEP_DAYS="${BACKUP_LOCAL_KEEP_DAYS:-14}"
+REMOTE="${BACKUP_REMOTE:-}"
+REMOTE_KEEP_DAYS="${BACKUP_REMOTE_KEEP_DAYS:-30}"
+STAMP=$(date -u +%Y-%m-%dT%H%MZ)
+WORK="$LOCAL_DIR/$STAMP"
+
+mkdir -p "$WORK"
+trap 'rm -rf "$WORK"' ERR
+
+docker compose --project-directory "$STACK_DIR" exec -T db \
+  sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$WORK/db.dump"
+db_size=$(stat -c %s "$WORK/db.dump")
+[ "$db_size" -gt 1000 ] || { echo "db.dump too small: $db_size bytes" >&2; exit 1; }
+
+tar -C "$STACK_DIR" -czf "$WORK/config.tar.gz" .env .env.api Caddyfile compose.yml
+(cd "$WORK" && sha256sum db.dump config.tar.gz > SHA256SUMS)
+
+if [ -n "$REMOTE" ]; then
+  rclone copy "$WORK" "$REMOTE/$STAMP" --retries 5 --low-level-retries 10
+  rclone check "$WORK" "$REMOTE/$STAMP" --one-way 2>/dev/null \
+    || rclone cryptcheck "$WORK" "$REMOTE/$STAMP" --one-way
+  rclone delete "$REMOTE" --min-age "${REMOTE_KEEP_DAYS}d"
+  rclone rmdirs "$REMOTE" --leave-root
+fi
+
+find "$LOCAL_DIR" -mindepth 1 -maxdepth 1 -type d -mtime +"$LOCAL_KEEP_DAYS" -exec rm -rf {} +
+
+echo "backup ok: $STAMP db=${db_size}B remote=${REMOTE:-none}"
